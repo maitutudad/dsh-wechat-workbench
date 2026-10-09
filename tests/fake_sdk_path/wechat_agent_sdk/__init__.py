@@ -2,14 +2,15 @@
 
 Activated via PYTHONPATH so `import wechat_agent_sdk` resolves here first.
 Behavior is scriptable through the FAKE_STATE environment variable (JSON):
-  {"needsLogin": bool, "messages": [raw...], "failConnect": bool}
+  {"needsLogin": bool, "messages": [raw...], "failConnect": bool,
+   "mediaBytes": "base64-of-download"}
 Side effects are recorded to the file named by FAKE_LOG (JSON lines):
-  {"event": "send_text", "conversationId": ..., "text": ..., "token": ...}
+  {"event": "send_text"|"send_media"|"download_media"|"connected", ...}
 """
 
+import base64
 import json
 import os
-import threading
 
 
 class LoginStatus:
@@ -33,9 +34,19 @@ class LoginResult:
         self.error = error
 
 
+class MediaInfo:
+    def __init__(self, type="image", cdn_param="", aes_key="", aeskey_hex="", file_name=""):
+        self.type = type
+        self.cdn_param = cdn_param
+        self.aes_key = aes_key
+        self.aeskey_hex = aeskey_hex
+        self.file_name = file_name
+
+
 class Parsed:
     def __init__(self, conversation_id, text, context_token, message_id="m1",
-                 sender_id=None, sender_name=None, group_id=None, is_at_bot=False):
+                 sender_id=None, sender_name=None, group_id=None, is_at_bot=False,
+                 media=None):
         self.conversation_id = conversation_id
         self.text = text
         self.context_token = context_token
@@ -44,6 +55,7 @@ class Parsed:
         self.sender_name = sender_name
         self.group_id = group_id
         self.is_at_bot = is_at_bot
+        self.media = media or []
 
 
 def _state():
@@ -80,9 +92,6 @@ class WeChatTransport:
         self._client = FakeClient()
         self.connected = False
         self.sent = []
-        # Synchronous preload mirrors real class: needs_login only sees
-        # in-memory state until request_login() loads storage.
-        self._token_loaded = False
 
     @property
     def needs_login(self):
@@ -111,13 +120,22 @@ class WeChatTransport:
     async def messages(self):
         for raw in _state().get("messages", []):
             yield raw
-        # Block forever, like the real long-poll stream.
         while True:
-            await asyncio_sleep(3600)
+            import asyncio
+            await asyncio.sleep(3600)
 
     def parse(self, raw):
         if raw is None:
             return None
+        media = [
+            MediaInfo(
+                type=m.get("type", "file"),
+                cdn_param=m.get("cdnParam", ""),
+                aes_key=m.get("aesKey", ""),
+                file_name=m.get("fileName", ""),
+            )
+            for m in raw.get("media", [])
+        ]
         return Parsed(
             conversation_id=raw.get("conversationId", "wxid_test"),
             text=raw.get("text", ""),
@@ -125,6 +143,7 @@ class WeChatTransport:
             message_id=raw.get("messageId", "m1"),
             group_id=raw.get("groupId"),
             is_at_bot=raw.get("isAtBot", False),
+            media=media,
         )
 
     async def send_text(self, conversation_id, text, context_token=None):
@@ -132,10 +151,16 @@ class WeChatTransport:
         _log({"event": "send_text", "conversationId": conversation_id,
               "text": text, "token": context_token})
 
+    async def download_media(self, media):
+        _log({"event": "download_media", "type": media.type,
+              "fileName": media.file_name})
+        encoded = _state().get("mediaBytes")
+        return b"" if not encoded else base64.b64decode(encoded)
 
-async def asyncio_sleep(seconds):
-    import asyncio
-    await asyncio.sleep(seconds)
+    async def send_media(self, chat_id, file_data, media_type, file_name="", context_token=""):
+        _log({"event": "send_media", "conversationId": chat_id,
+              "mediaType": media_type, "fileName": file_name,
+              "bytes": len(file_data), "token": context_token})
 
 
 WeChatBot = None

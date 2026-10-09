@@ -10,6 +10,8 @@
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import fs from 'node:fs'
+import path from 'node:path'
 
 /**
  * @param {import('@deepseek-ai/cordis').Context} ctx
@@ -63,4 +65,71 @@ export function registerNotifyTool(ctx, { transport, getPrimary }) {
       return { sent: true, conversation }
     },
   }))
+
+  // Any session's agent can push a local file (image/video/document) to the
+  // user's WeChat. Extension decides the WeChat media kind.
+  ctx.tools.register(defineTool({
+    name: 'wechat_send_file',
+    description: 'Send a local file to the user\'s WeChat as an image, video, or file message. '
+      + 'Use it when the user asked for a deliverable on WeChat, or to hand over a report/artifact generated in the workspace. '
+      + 'Absolute or workspace-relative path; the extension decides how WeChat renders it.',
+    parameters: {
+      path: {
+        type: 'string',
+        required: true,
+        description: 'Path to the local file to send (png/jpg/gif/webp render as images; mp4 as video; anything else as a file).',
+      },
+      fileName: {
+        type: 'string',
+        description: 'Optional display name; defaults to the file\'s basename.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          sent: { type: 'boolean', required: true },
+          conversation: { type: 'string' },
+          reason: { type: 'string' },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.sent
+          ? `File delivered to WeChat (${value.conversation}).`
+          : `File not sent: ${value.reason}`,
+      }],
+    },
+    async execute(args) {
+      const filePath = (args.path ?? '').trim()
+      if (!filePath) throw new Error('wechat_send_file requires a non-empty path')
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        throw new Error(`wechat_send_file: not a readable file: ${filePath}`)
+      }
+      const conversation = getPrimary()
+      if (!conversation) {
+        return {
+          sent: false,
+          reason: 'WeChat channel is not active yet: the user has not messaged the bot since startup.',
+        }
+      }
+      const fileName = (args.fileName ?? '').trim() || path.basename(filePath)
+      const kind = kindForFileName(fileName)
+      const queued = transport.sendMedia({ conversationId: conversation, path: filePath, kind, fileName })
+      return queued
+        ? { sent: true, conversation }
+        : { sent: false, reason: 'transport child is not running' }
+    },
+  }))
+}
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v'])
+
+function kindForFileName(fileName) {
+  const extension = path.extname(fileName).toLowerCase()
+  if (IMAGE_EXTENSIONS.has(extension)) return 'image'
+  if (VIDEO_EXTENSIONS.has(extension)) return 'video'
+  return 'file'
 }

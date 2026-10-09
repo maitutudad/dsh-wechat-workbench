@@ -7,6 +7,7 @@
  * exactly like typing into the Web composer.
  */
 
+import fs from 'node:fs'
 import { SessionFollower } from './progress.js'
 
 const HELP = [
@@ -317,7 +318,7 @@ export class Router {
           requestId,
           sessionId: pointer.sessionId,
           mode: 'queue',
-          content: [{ type: 'text', text: message.text }],
+          content: buildContentParts(message.text, message.media),
         },
         new AbortController().signal,
       )
@@ -361,6 +362,40 @@ export class Router {
 // ----------------------------------------------------------------------
 // Small display helpers
 // ----------------------------------------------------------------------
+
+const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024 // DSH image intake limit
+
+/**
+ * Build PromptContentPart[] from a WeChat message: images become inline
+ * base64 image parts (DSH intake limit applies), other files are referenced
+ * by their on-disk path so the agent's fs tools can read them.
+ * @param {string} text
+ * @param {Array<{path: string, fileName?: string, kind?: string, mediaType?: string, bytes?: number}> | undefined} media
+ */
+function buildContentParts(text, media) {
+  const parts = [{ type: 'text', text }]
+  const notes = []
+  for (const entry of media ?? []) {
+    try {
+      if (entry.kind === 'image' && (entry.bytes ?? 0) <= MAX_INLINE_IMAGE_BYTES) {
+        const data = fs.readFileSync(entry.path)
+        parts.push({
+          type: 'image',
+          mediaType: entry.mediaType || 'image/png',
+          data: data.toString('base64'),
+          name: entry.fileName,
+        })
+        continue
+      }
+      notes.push(`[附件已保存: ${entry.path}${entry.fileName ? `（文件名 ${entry.fileName}）` : ''}]`)
+    } catch (error) {
+      notes.push(`[附件读取失败: ${entry.path}: ${error}]`)
+    }
+  }
+  if (notes.length > 0) parts[0].text = `${text}\n${notes.join('\n')}`
+  return parts
+}
+
 
 function sessionTitle(summary) {
   const hint = summary?.projections?.title?.text ?? summary?.projections?.title

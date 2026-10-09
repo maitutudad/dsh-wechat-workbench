@@ -1,4 +1,4 @@
-"""Headless WeChat transport child process for the dsh-wechat-remote plugin.
+"""Headless WeChat transport child process for the dsh-wechat-workbench plugin.
 
 Runs the iLink Bot long connection via wechat-agent-sdk's transport layer and
 speakes a tiny JSON-line protocol with the parent (the DSH Cordis plugin) on
@@ -75,6 +75,58 @@ async def _send(conversation_id: str, text: str) -> None:
         logger.exception("send_text failed to %s", conversation_id)
 
 
+async def _send_media(conversation_id: str, path: str, kind: str, file_name: str) -> None:
+    """Read a local file and push it to WeChat (image/video/file/voice)."""
+    transport = _state["transport"]
+    if transport is None:
+        logger.warning("sendMedia before connect ignored")
+        return
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+        token = _context_tokens.get(conversation_id, "")
+        if token:
+            await transport.send_media(conversation_id, data, kind, file_name, token)
+        else:
+            await transport.send_media(conversation_id, data, kind, file_name)
+    except Exception:
+        logger.exception("send_media failed to %s (%s)", conversation_id, path)
+
+
+def _media_kind(media_type: str) -> str:
+    return media_type if media_type in ("image", "video", "voice") else "file"
+
+
+def _guess_mime(file_name: str) -> str:
+    import mimetypes
+
+    guessed = mimetypes.guess_type(file_name)[0]
+    return guessed or "application/octet-stream"
+
+
+async def _download_and_save(message_id: str, index: int, media) -> dict | None:
+    transport = _state["transport"]
+    media_dir = _state.get("media_dir")
+    if transport is None or not media_dir:
+        return None
+    import os
+
+    os.makedirs(media_dir, exist_ok=True)
+    file_name = media.file_name or f"{message_id}-{index}.{media.type}"
+    safe_name = os.path.basename(file_name) or f"{message_id}-{index}.bin"
+    path = os.path.join(media_dir, f"{message_id}-{index}-{safe_name}")
+    data = await transport.download_media(media)
+    with open(path, "wb") as fh:
+        fh.write(data)
+    return {
+        "path": path,
+        "fileName": safe_name,
+        "kind": _media_kind(media.type),
+        "mediaType": _guess_mime(safe_name),
+        "bytes": len(data),
+    }
+
+
 async def _reader_loop(stop: asyncio.Event) -> None:
     loop = asyncio.get_running_loop()
     while not stop.is_set():
@@ -93,8 +145,20 @@ async def _reader_loop(stop: asyncio.Event) -> None:
         op = msg.get("op")
         if op == "send":
             asyncio.create_task(_send(msg["conversationId"], msg["text"]))
+        elif op == "sendMedia":
+            asyncio.create_task(
+                _send_media(
+                    msg["conversationId"],
+                    msg["path"],
+                    msg.get("kind", "file"),
+                    msg.get("fileName", ""),
+                )
+            )
         elif op in ("start", "stop"):
-            if op == "stop":
+            if op == "start":
+                if msg.get("mediaDir"):
+                    _state["media_dir"] = msg["mediaDir"]
+            else:
                 stop.set()
         else:
             logger.warning("unknown op %r", op)
@@ -109,6 +173,17 @@ async def _message_loop(transport: WeChatTransport, stop: asyncio.Event) -> None
             continue
         if parsed.context_token:
             _context_tokens[parsed.conversation_id] = parsed.context_token
+        # Download attachments (lazy CDN references) into the media dir.
+        media_entries = []
+        for index, media in enumerate(parsed.media or []):
+            try:
+                descriptor = await _download_and_save(
+                    parsed.message_id or "m", index, media
+                )
+                if descriptor:
+                    media_entries.append(descriptor)
+            except Exception:
+                logger.exception("media download failed (%s)", media.type)
         _emit(
             {
                 "op": "message",
@@ -119,6 +194,7 @@ async def _message_loop(transport: WeChatTransport, stop: asyncio.Event) -> None
                 "isAtBot": parsed.is_at_bot,
                 "text": parsed.text or "",
                 "messageId": parsed.message_id,
+                "media": media_entries,
             }
         )
 
@@ -128,6 +204,13 @@ async def main() -> None:
     account_id = "dsh"
     transport = WeChatTransport(account_id=account_id)
     _state["transport"] = transport
+    # Default media dir up front: inbound messages may be processed before
+    # the parent's start op arrives. `start` overrides it when provided.
+    import os
+
+    _state["media_dir"] = os.path.join(
+        os.path.expanduser("~"), ".dsh-wechat-workbench", "media"
+    )
 
     # Login if needed. `needs_login` only reflects in-memory state, so on a
     # fresh process it is always True; `request_login()` itself loads any

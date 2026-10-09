@@ -1,4 +1,4 @@
-# 产品化路线与测试指南 — dsh-wechat-remote
+# 产品化路线与测试指南 — dsh-wechat-workbench
 
 ## 一、测试（现在就能跑）
 
@@ -46,7 +46,7 @@ Checklist：
 - [ ] answerer 超时/竞争的边界（并发多问题、会话切换时 pending 清理）
 
 ### P1 — 分发与安装体验
-- [ ] 发布 npm：`dsh plugin --profile X add dsh-wechat-remote` 一条命令装
+- [ ] 发布 npm：`dsh plugin --profile X add dsh-wechat-workbench` 一条命令装
 - [ ] Python 依赖自管理：首次启动自动建 venv 并 `pip install wechat-agent-sdk[qr]`，免手工前置
 - [ ] 版本对齐策略：锁上游 SDK 版本；iLink 协议变更只需升级依赖 + 跑回归
 

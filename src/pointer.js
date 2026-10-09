@@ -26,7 +26,7 @@ export class PointerStore {
         }
       }
     } catch (error) {
-      console.warn(`[wechat-remote] failed to load pointers: ${error}`)
+      console.warn(`[wechat-workbench] failed to load pointers: ${error}`)
     }
   }
 

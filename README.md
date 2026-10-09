@@ -1,4 +1,4 @@
-# dsh-wechat-remote
+# dsh-wechat-workbench
 
 [English](README.md) | [中文](README.zh.md)
 
@@ -45,6 +45,12 @@ Design promises:
   Unanswered questions fall back to the GUI after a timeout.
 - **`wechat_notify` tool.** Any session's agent can proactively push a message
   to the notification conversation ("ping me on WeChat when the build fails").
+- **`wechat_send_file` tool.** Any session's agent can hand a local file to
+  the user on WeChat — png/jpg/gif/webp render as images, mp4 as video,
+  everything else as a file message.
+- **Media inbound.** WeChat images are downloaded and inlined into the session
+  prompt (the agent sees them with vision); files land on disk and the prompt
+  references their path for the agent's fs tools.
 - **Automatic at-desk detection.** Keyboard/mouse idle beyond
   `idleAwayMinutes` flips approvals to WeChat; one touch flips back. Unknown
   platforms count as at-desk (fail toward the GUI).
@@ -62,20 +68,20 @@ Design promises:
 From git (no build step — the plugin is plain ESM JavaScript):
 
 ```sh
-dsh plugin --profile web add github:<you>/dsh-wechat-remote
+dsh plugin --profile web add github:<you>/dsh-wechat-workbench
 ```
 
 or from npm once published:
 
 ```sh
-dsh plugin --profile web add dsh-wechat-remote
+dsh plugin --profile web add dsh-wechat-workbench
 ```
 
 `@deepseek-ai/*` packages are peer dependencies; when running DSH from a
 source checkout they resolve through the checkout's own tree. Set up Python:
 
 ```sh
-cd "$(dsh plugin --profile web dir dsh-wechat-remote 2>/dev/null || echo .)"
+cd "$(dsh plugin --profile web dir dsh-wechat-workbench 2>/dev/null || echo .)"
 ./scripts/setup-python.sh          # creates .venv, installs wechat-agent-sdk + qrcode
 ```
 
@@ -84,9 +90,9 @@ semantics: a non-insert entry **targets an existing row by id and replaces the
 named properties wholesale**:
 
 ```yaml
-- id: wechat-remote
+- id: wechat-workbench
   config:
-    pythonBin: /abs/path/to/dsh-wechat-remote/.venv/bin/python
+    pythonBin: /abs/path/to/dsh-wechat-workbench/.venv/bin/python
     allowWxids: ['o9cq8xxxx@im.wechat']   # fail-closed when empty
     bootstrap: true                        # first run: replies with your id
     approvalMode: 'all'                    # WeChat answers every session's questions when away
@@ -142,7 +148,11 @@ loader conventions) live in [docs/INTEGRATION-NOTES.zh.md](docs/INTEGRATION-NOTE
 
 - The iLink Bot channel is gray-release; protocol changes land in
   `wechat-agent-sdk` — upgrade the dependency, this plugin owns no protocol code.
-- Media messages (images/voice/files) are not yet forwarded into sessions.
+- Inbound images are inlined up to the DSH 20 MiB image intake limit; larger
+  images and all other files are saved to `~/.dsh-wechat-workbench/media/` and
+  referenced by path for the agent's fs tools.
+- Voice messages arrive as their transcription text; the audio itself is saved
+  as a file attachment.
 - The follower degrades to 3-second `sessionQuery` polling if the live follow
   stream throws, so delivery survives host-internal stream errors.
 

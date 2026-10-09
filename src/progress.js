@@ -101,7 +101,7 @@ export class SessionFollower {
       // Full stack to the terminal: message text alone hides which host
       // internal actually threw.
       process.stderr.write(
-        `[wechat-remote] 会话跟随中断，回退为轮询模式。stack:\n${error?.stack ?? String(error)}\n`,
+        `[wechat-workbench] 会话跟随中断，回退为轮询模式。stack:\n${error?.stack ?? String(error)}\n`,
       )
       await this.pollLoop()
     } finally {
@@ -126,7 +126,7 @@ export class SessionFollower {
           this.lastPolledSeq = Math.max(this.lastPolledSeq ?? 0, seq)
         }
       } catch (error) {
-        process.stderr.write(`[wechat-remote] 轮询读取失败（继续重试）：${error}\n`)
+        process.stderr.write(`[wechat-workbench] 轮询读取失败（继续重试）：${error}\n`)
       }
       await new Promise((resolve) => {
         const timer = setTimeout(resolve, 3_000)

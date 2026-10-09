@@ -1,4 +1,4 @@
-# dsh-wechat-remote — 微信远程工作台
+# dsh-wechat-workbench — 微信远程工作台
 
 [English](README.md) | 中文
 
@@ -20,14 +20,16 @@
 | `/atdesk on\|off\|auto` | 在席检测覆盖 / 状态 |
 | 直接发文字 | 向当前会话发送 follow-up（GUI 同一时间线实时可见） |
 
+> **媒体**：微信发的图片会下载后内联进会话（Agent 直接"看图"）；文件落盘到 `~/.dsh-wechat-workbench/media/` 并以路径告知 Agent。Agent 可用 `wechat_send_file` 工具把本地文件（图片/视频/文档）回发到你的微信，`wechat_notify` 可随时主动推送通知。
+
 ## 安装
 
 ```sh
 # 从 GitHub 直装（纯 ESM JS，无需构建授权）
-dsh plugin --profile web add github:<you>/dsh-wechat-remote
+dsh plugin --profile web add github:<you>/dsh-wechat-workbench
 
 # 或从 npm
-dsh plugin --profile web add dsh-wechat-remote
+dsh plugin --profile web add dsh-wechat-workbench
 ```
 
 准备 Python 环境（iLink 传输子进程依赖）：
@@ -40,7 +42,7 @@ cd <插件目录>
 配置 `$DSH_HOME/profiles/web/cordis.patch.yml`。⚠️ **patch 语义**：不带 `insert` 的条目按 id 定向覆盖已有行，且 `config` 是**整体替换不是合并**：
 
 ```yaml
-- id: wechat-remote
+- id: wechat-workbench
   config:
     pythonBin: /abs/path/to/.venv/bin/python
     allowWxids: ['o9cq8xxxx@im.wechat']   # 空白名单 = 拒绝所有人（fail-closed）
@@ -83,7 +85,9 @@ npm test    # 26 个测试，无外部依赖
 ## 已知限制
 
 - iLink Bot 通道处于灰度，协议变更收敛在 `wechat-agent-sdk` 依赖里，升级即可。
-- 媒体消息（图/语音/文件）尚未接入会话。
+- 入站图片内联上限为 DSH 的 20 MiB 图片摄入限制；超大图与其他文件保存到
+  `~/.dsh-wechat-workbench/media/`，以路径形式告知 Agent 的 fs 工具。
+- 语音消息以转写文本进入会话，音频本体作为文件附件保存。
 - 实时 follow 流异常时自动降级为 3 秒 `sessionQuery` 轮询，最终回复仍会送达。
 
 ## License

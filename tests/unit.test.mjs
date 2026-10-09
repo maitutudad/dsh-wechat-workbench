@@ -1,5 +1,5 @@
 /**
- * Unit tests for the pure, DSH-free parts of dsh-wechat-remote.
+ * Unit tests for the pure, DSH-free parts of dsh-wechat-workbench.
  * Run: node --test tests/
  */
 

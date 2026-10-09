@@ -55,7 +55,7 @@ export class AtDeskMonitor {
           if (this.state === null ? !next : next !== this.state) {
             this.state = next
             this.logger?.info(
-              `wechat-remote at-desk: ${next ? '在电脑前（审批回 GUI）' : `空闲 ${Math.round(idle / 60)} 分钟（审批转微信）`}`,
+              `wechat-workbench at-desk: ${next ? '在电脑前（审批回 GUI）' : `空闲 ${Math.round(idle / 60)} 分钟（审批转微信）`}`,
             )
           } else {
             this.state = next

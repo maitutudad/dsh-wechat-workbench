@@ -131,6 +131,11 @@ export class WeChatTransportChild {
     this.write({ op: 'send', conversationId, text })
   }
 
+  /** Push a local file to one WeChat conversation as image/video/file/voice. */
+  sendMedia(op) {
+    return this.write({ op: 'sendMedia', ...op })
+  }
+
   kill() {
     this.stopping = true
     const child = this.child

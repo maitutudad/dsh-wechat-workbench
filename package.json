@@ -1,5 +1,5 @@
 {
-  "name": "dsh-wechat-remote",
+  "name": "dsh-wechat-workbench",
   "version": "0.1.0",
   "description": "WeChat remote workbench for DeepSeek Harness: browse workspaces, continue sessions, and approve agent questions over the iLink Bot long connection",
   "type": "module",
@@ -30,16 +30,16 @@
     "agent",
     "remote"
   ],
-  "author": "dsh-wechat-remote contributors",
+  "author": "dsh-wechat-workbench contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/taber/dsh-wechat-remote.git"
+    "url": "git+https://github.com/taber/dsh-wechat-workbench.git"
   },
   "bugs": {
-    "url": "https://github.com/taber/dsh-wechat-remote/issues"
+    "url": "https://github.com/taber/dsh-wechat-workbench/issues"
   },
-  "homepage": "https://github.com/taber/dsh-wechat-remote#readme",
+  "homepage": "https://github.com/taber/dsh-wechat-workbench#readme",
   "engines": {
     "node": ">=20"
   },

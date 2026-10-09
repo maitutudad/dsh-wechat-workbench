@@ -1,5 +1,5 @@
 /**
- * dsh-wechat-remote — WeChat remote workbench plugin for DeepSeek Harness.
+ * dsh-wechat-workbench — WeChat remote workbench plugin for DeepSeek Harness.
  *
  * Turns one bound WeChat conversation into a second client of the same
  * workbench the Web GUI serves: browse workspaces, switch sessions, continue
@@ -12,7 +12,7 @@
  *     ├─ ctx.sessionController    — list / create / prompt / page / follow
  *     └─ ctx.userQuestions        — 'user-questions/request' answerer
  *
- * @module dsh-wechat-remote
+ * @module dsh-wechat-workbench
  */
 
 import Schema from '@deepseek-ai/schemastery'
@@ -26,7 +26,7 @@ import { WeChatTransportChild } from './transport.js'
 import { AtDeskMonitor } from './atdesk.js'
 import { registerNotifyTool } from './notify-tool.js'
 
-export const name = 'dsh-wechat-remote'
+export const name = 'dsh-wechat-workbench'
 
 // The loader reads `Config` (capital C) from the plugin module
 // (vendor/cordis registry.ts: `Config: plugin.Config`); without it the raw
@@ -74,20 +74,20 @@ export function apply(ctx, config) {
 
   if (config.allowWxids.length === 0 && !config.bootstrap) {
     logger.warn(
-      'wechat-remote: allowWxids 为空且未开 bootstrap，插件不启动。'
-      + ' 配置 wechat-remote.allowWxids，或临时设 bootstrap: true 查看你的 wxid。',
+      'wechat-workbench: allowWxids 为空且未开 bootstrap，插件不启动。'
+      + ' 配置 wechat-workbench.allowWxids，或临时设 bootstrap: true 查看你的 wxid。',
     )
     return
   }
   if (config.allowWxids.length === 0) {
-    logger.warn('wechat-remote: 引导模式（bootstrap）——只回复 wxid，不执行任何指令。')
+    logger.warn('wechat-workbench: 引导模式（bootstrap）——只回复 wxid，不执行任何指令。')
   }
   const allowed = new Set(config.allowWxids)
 
   // Pointer persistence under the DSH home (falls back to a dotdir).
   const home = process.env.DSH_HOME
     ?? path.join(os.homedir(), '.dsh')
-  const storeDir = path.join(home, 'wechat-remote')
+  const storeDir = path.join(home, 'wechat-workbench')
   fs.mkdirSync(storeDir, { recursive: true })
   const pointers = new PointerStore(path.join(storeDir, 'pointers.json'))
 
@@ -153,17 +153,17 @@ export function apply(ctx, config) {
   })
 
   transport.on('login', ({ qrUrl }) => {
-    logger.warn(`wechat-remote: 请用微信扫码登录 iLink：${qrUrl}`)
+    logger.warn(`wechat-workbench: 请用微信扫码登录 iLink：${qrUrl}`)
     // Direct write: guaranteed visible even if the host filters logger output.
     process.stderr.write(
-      `\n[wechat-remote] 请用微信扫码登录（或用微信打开链接）：\n${qrUrl}\n\n`,
+      `\n[wechat-workbench] 请用微信扫码登录（或用微信打开链接）：\n${qrUrl}\n\n`,
     )
   })
   transport.on('ready', () => {
-    logger.info('wechat-remote: iLink 长连接已建立，微信工作台就绪')
+    logger.info('wechat-workbench: iLink 长连接已建立，微信工作台就绪')
   })
   transport.on('error', ({ message }) => {
-    logger.error(`wechat-remote: 传输错误：${message}`)
+    logger.error(`wechat-workbench: 传输错误：${message}`)
   })
 
   transport.on('message', async (message) => {
@@ -171,16 +171,16 @@ export function apply(ctx, config) {
     // Guaranteed-visibility receipt marker: distinguishes "message never
     // arrived" from "arrived but processing failed".
     process.stderr.write(
-      `[wechat-remote] 收到微信消息 from=${conversationId} text=${JSON.stringify((text ?? '').slice(0, 50))}\n`,
+      `[wechat-workbench] 收到微信消息 from=${conversationId} text=${JSON.stringify((text ?? '').slice(0, 50))}\n`,
     )
     try {
       if (config.bootstrap && allowed.size === 0) {
         logger.warn(
-          `wechat-remote: [bootstrap] 收到消息 conversation=${conversationId} sender=${senderId} (${senderName})`,
+          `wechat-workbench: [bootstrap] 收到消息 conversation=${conversationId} sender=${senderId} (${senderName})`,
         )
         transport.send(conversationId,
           `🧭 引导模式：你的会话标识是 ${conversationId}${groupId !== null ? `（群内发送者 ${senderId}）` : ''}。`
-          + '把它配置到 wechat-remote.allowWxids 并关闭 bootstrap 即可启用。')
+          + '把它配置到 wechat-workbench.allowWxids 并关闭 bootstrap 即可启用。')
         return
       }
       // Fail-closed authorization.
@@ -188,7 +188,7 @@ export function apply(ctx, config) {
       const groupAllowed = config.allowGroups && groupId !== null
         && (allowed.has(senderId) || allowed.has(senderName))
       if (!peerAllowed && !groupAllowed) {
-        logger.warn(`wechat-remote: 拒绝未授权消息 from=${conversationId} sender=${senderId}`)
+        logger.warn(`wechat-workbench: 拒绝未授权消息 from=${conversationId} sender=${senderId}`)
         transport.send(conversationId, '⛔ 未授权。')
         return
       }
@@ -203,7 +203,7 @@ export function apply(ctx, config) {
       const reply = await router.handle({ conversationId, text: trimmed, groupId, isAtBot })
       if (reply) transport.send(conversationId, reply)
     } catch (error) {
-      logger.error(`wechat-remote: message handling failed: ${error}`)
+      logger.error(`wechat-workbench: message handling failed: ${error}`)
       transport.send(conversationId, `⚠️ 处理失败：${error}`)
     }
   })

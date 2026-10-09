@@ -1,0 +1,112 @@
+/**
+ * Media contract tests: WeChat attachments become session prompt content
+ * parts (images inline as base64, other files saved and referenced by path),
+ * and agents can push local files back to WeChat via the wechat_send_file
+ * tool.
+ */
+
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+import { registerNotifyTool } from '../src/notify-tool.js'
+import { Router } from '../src/router.js'
+import { PointerStore } from '../src/pointer.js'
+
+const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+function writeTempFile(name, buffer) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-wx-m-'))
+  const filePath = path.join(dir, name)
+  fs.writeFileSync(filePath, buffer)
+  return filePath
+}
+
+test('inbound image becomes an inline image content part on the prompt', async () => {
+  const imagePath = writeTempFile('photo.png', Buffer.from(PNG_BASE64, 'base64'))
+  const fakeCtx = makeCtxWithSession()
+  const { router } = buildMediaHarness(fakeCtx)
+  await router.handle({ conversationId: 'wxid_me', text: '/ss' })
+  await router.handle({ conversationId: 'wxid_me', text: '/ss 1' })
+  await router.handle({
+    conversationId: 'wxid_me',
+    text: '这张图里是什么？',
+    media: [{ path: imagePath, fileName: 'photo.png', kind: 'image', mediaType: 'image/png', bytes: 70 }],
+  })
+  const prompt = fakeCtx.prompts.at(-1)
+  const imagePart = prompt.content.find((part) => part.type === 'image')
+  assert.ok(imagePart, 'image content part present')
+  assert.equal(imagePart.mediaType, 'image/png')
+  assert.equal(imagePart.data, PNG_BASE64)
+  assert.equal(imagePart.name, 'photo.png')
+  assert.ok(prompt.content.some((p) => p.type === 'text' && p.text.includes('这张图里是什么')))
+})
+
+test('inbound file is referenced by saved path in the text part', async () => {
+  const filePath = writeTempFile('data.csv', Buffer.from('a,b\n1,2'))
+  const fakeCtx = makeCtxWithSession()
+  const { router } = buildMediaHarness(fakeCtx)
+  await router.handle({ conversationId: 'wxid_me', text: '/ss' })
+  await router.handle({ conversationId: 'wxid_me', text: '/ss 1' })
+  await router.handle({
+    conversationId: 'wxid_me',
+    text: '分析这个文件',
+    media: [{ path: filePath, fileName: 'data.csv', kind: 'file', mediaType: 'text/csv', bytes: 7 }],
+  })
+  const prompt = fakeCtx.prompts.at(-1)
+  const textPart = prompt.content.find((p) => p.type === 'text')
+  assert.ok(textPart.text.includes('分析这个文件'))
+  assert.ok(textPart.text.includes(filePath), 'file path included for fs tools')
+  assert.ok(!prompt.content.some((p) => p.type === 'file'), 'no receipt parts without fileUploads')
+})
+
+test('wechat_send_file tool pushes a local file through the transport', async () => {
+  const filePath = writeTempFile('out.png', Buffer.from(PNG_BASE64, 'base64'))
+  const sent = []
+  const ctx = { tools: { register: (t) => registered.push(t) } }
+  const registered = []
+  registerNotifyTool(ctx, {
+    transport: { send: () => {}, sendMedia: (op) => sent.push(op) },
+    getPrimary: () => 'wxid_boss',
+  })
+  const tool = registered.find((t) => t.name === 'wechat_send_file')
+  assert.ok(tool, 'tool registered')
+  const result = await tool.execute({ path: filePath })
+  assert.equal(result.sent, true)
+  assert.equal(sent[0].conversationId, 'wxid_boss')
+  assert.equal(sent[0].path, filePath)
+  assert.equal(sent[0].kind, 'image')
+  assert.equal(sent[0].fileName, 'out.png')
+})
+
+// ---------------------------------------------------------------- helpers
+function makeCtxWithSession() {
+  const prompts = []
+  return {
+    prompts,
+    on() { /* no waterfall in this harness */ },
+    sessionController: {
+      list: async () => ({ items: [{ sessionId: 's1', updatedAt: Date.now(), running: false, blank: false, projections: { title: { text: 'T' } } }] }),
+      create: async () => ({ sessionId: 's-created' }),
+      rename: async () => ({}),
+      prompt: async (request) => { prompts.push(request); return { accepted: true } },
+      follow: async function* () { await new Promise(() => {}) },
+    },
+    workspaceController: {
+      follow: async function* () {
+        yield { type: 'baseline', value: { items: [{ workspaceId: 'ws1', title: 'W', sessionIds: ['s1'] }], archivedSessionIds: [] } }
+      },
+    },
+  }
+}
+
+function buildMediaHarness(fakeCtx) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-wx-p-'))
+  const pointers = new PointerStore(path.join(dir, 'p.json'))
+  const sent = []
+  const transport = { sent, send: (c, t) => sent.push({ c, t }), sendMedia: (op) => sent.push(op) }
+  const router = new Router({ ctx: fakeCtx, pointers, transport, noteSession: () => {} })
+  return { router, transport }
+}
