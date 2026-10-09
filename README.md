@@ -135,16 +135,8 @@ The suite includes contract tests written against DSH's real service shapes
 protocol test that drives the real `python/transport.py` against a fake
 `wechat_agent_sdk` module.
 
-Enable DSH's built-in HMR row in your profile patch to hot-reload plugin code
-on save (config edits hot-apply via `patchReload: live` regardless):
-
-```yaml
-- id: hmr
-  disabled: false
-  config:
-    root: ['.', /abs/path/to/dsh-wechat-remote]
-    ignored: ['**/node_modules/**', '**/.venv/**', '**/.*']
-```
+Integration notes for contributors (service request shapes, event vocabulary,
+loader conventions) live in [docs/INTEGRATION-NOTES.zh.md](docs/INTEGRATION-NOTES.zh.md).
 
 ## Known limitations
 

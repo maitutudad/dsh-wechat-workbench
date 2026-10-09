@@ -78,28 +78,7 @@ npm test    # 26 个测试，无外部依赖
 
 包含针对 DSH 真实服务形状的合同测试（`SessionFollowRequest.address`、工作区 baseline 帧、`sessionQuery.readSession`、`user-questions/request` waterfall），以及用假 `wechat_agent_sdk` 模块驱动真实 `python/transport.py` 的协议测试。
 
-开发时建议启用 DSH 自带的 HMR 行（代码保存即热载；配置改动本来就走 `patchReload: live`）：
-
-```yaml
-- id: hmr
-  disabled: false
-  config:
-    root: ['.', /abs/path/to/dsh-wechat-remote]
-    ignored: ['**/node_modules/**', '**/.venv/**', '**/.*']
-```
-
-## 踩坑记录（贡献者必读）
-
-集成 DSH 服务时验证过的事实，改动相关代码前先读：
-
-- **Loader 只认大写 `Config` 导出**（`vendor/cordis` `registry.ts`: `Config: plugin.Config`）；只导 `config` 时 schema 不挂载、默认值不填充，原始配置直接透传。
-- **patch 层的 `config` 是整体替换**，不是深合并；用户 patch 覆盖一行时要写全所需字段（未写的靠 schema 默认值兜底）。`insert:` 带 `id` 只对 group 行合法，普通行会被静默跳过。
-- **`SessionFollowRequest` 要 `address: { kind: 'session', sessionId }`**，不是裸 id；`page()` 需要游标 `throughSeq`，取整段日志用 `ctx.sessionQuery.readSession()` 更简单。
-- **工作区投影帧**：首帧为 `{ type: 'baseline', value: { items: WorkspaceView[] } }`，行字段 `workspaceId/title/path/sessionIds`。
-- **事件词表**：`assistant/message`、`assistant/attempt`、`tool/call`、`tool/result`、`turn/end`、`user/message`；assistant 正文在 `data.message.content[]`（content blocks），tool 名在 `data.name`，`turn/end` 的原因在 `data.reason.kind`。
-- **`userQuestions` 应答器**：`ctx.on('user-questions/request', (request, next) => …)`，返回答案即 claim，否则 `await next()` 交给 GUI。
-- **wechat-agent-sdk 的 `needs_login` 只看内存**，新进程恒为 True；`request_login()` 会先加载已存 token 并返回 `qr_url=""` 的空会话表示已登录——必须区分空会话与真二维码，否则重启后陷入"等扫码"死循环。
-- `check_login` 返回 `LoginResult.status`（`LoginStatus` 枚举），不是 `logged_in` 布尔。
+贡献者向的集成笔记（服务请求形状、事件词表、Loader 约定、SDK 行为）见 [docs/INTEGRATION-NOTES.zh.md](docs/INTEGRATION-NOTES.zh.md)。
 
 ## 已知限制
 
