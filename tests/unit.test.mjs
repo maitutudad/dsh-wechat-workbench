@@ -13,6 +13,30 @@ import { parseCommand } from '../src/router.js'
 import { matchAnswer, formatQuestion } from '../src/answerer.js'
 import { summarizeEvent, assistantText } from '../src/progress.js'
 import { PointerStore } from '../src/pointer.js'
+import { Config, readLiveField } from '../src/index.js'
+
+// ---------------------------------------------------------------- config
+// Regression: the loader hands volatile fields to apply() as live
+// references ({ get() }), not plain values; every read must unwrap.
+test('Config resolves volatile fields into live references, readLiveField unwraps both shapes', () => {
+  const resolved = Config({ allowWxids: ['wxid_a'], approvalMode: 'all', idleAwayMinutes: 7 })
+  const approval = resolved.approvalMode
+  assert.equal(typeof approval.get, 'function', 'volatile field is a live reference')
+  assert.equal(readLiveField(approval), 'all')
+  assert.deepEqual(readLiveField(resolved.allowWxids), ['wxid_a'])
+  assert.equal(readLiveField(resolved.idleAwayMinutes), 7)
+  // Plain values (direct mounts, tests) pass through unchanged.
+  assert.equal(readLiveField('wechat-driven'), 'wechat-driven')
+  assert.deepEqual(readLiveField(['a']), ['a'])
+  assert.equal(readLiveField(true), true)
+  assert.equal(readLiveField(null), null)
+  // Live reads observe swaps inside the same reference (loader commits).
+  let current = 5
+  const ref = { get: () => current }
+  assert.equal(readLiveField(ref), 5)
+  current = 9
+  assert.equal(readLiveField(ref), 9)
+})
 
 // ---------------------------------------------------------------- commands
 test('parseCommand: slash commands vs free text', () => {

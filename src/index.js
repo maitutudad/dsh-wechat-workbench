@@ -68,6 +68,17 @@ const schema = Schema.object({
 export const Config = schema
 export const config = schema
 
+/**
+ * Read a config field that may be a live volatile reference (`{ get() }`,
+ * swapped in place by the loader on form edits) or a plain value (direct
+ * mounts, tests).
+ * @param {unknown} field - one Config field's runtime value.
+ * @returns the field's current value.
+ */
+export function readLiveField(field) {
+  return field !== null && typeof field === 'object' && typeof field.get === 'function' ? field.get() : field
+}
+
 export const inject = ['sessionController', 'workspaceController', 'userQuestions', 'sessionQuery', 'tools']
 
 /** Sessions currently driven from WeChat (for the answerer's claim rule). */
@@ -80,14 +91,19 @@ export function apply(ctx, config) {
   // them. Normalize only when mounted without the loader (tests, direct use).
   if (typeof config !== 'object' || config.allowWxids === undefined) config = schema(config ?? {})
 
-  if (config.allowWxids.length === 0 && !config.bootstrap) {
+  // Volatile fields arrive as live references ({ get() }) whose values the
+  // loader swaps in place; plain values otherwise (direct mounts, tests).
+  const live = readLiveField
+  const wxids = () => live(config.allowWxids) ?? []
+
+  if (wxids().length === 0 && !live(config.bootstrap)) {
     logger.warn(
       'wechat-workbench: allowWxids 为空且未开 bootstrap，所有微信消息都会被拒绝。'
       + ' 在工作台「插件」页的表单里配置 wechat-workbench.allowWxids（保存即生效），'
       + ' 或临时设 bootstrap: true 查看你的 wxid。',
     )
   }
-  if (config.allowWxids.length === 0) {
+  if (wxids().length === 0) {
     logger.warn('wechat-workbench: 引导模式（bootstrap）——只回复 wxid，不执行任何指令。')
   }
 
@@ -111,7 +127,7 @@ export function apply(ctx, config) {
   // (via /atdesk on|off) wins until /atdesk auto clears it.
   const monitor = new AtDeskMonitor({
     logger,
-    idleAwaySeconds: () => Math.max(1, config.idleAwayMinutes) * 60,
+    idleAwaySeconds: () => Math.max(1, live(config.idleAwayMinutes) ?? 5) * 60,
   })
   let manualAtDesk = null // null = automatic
   const atDeskController = {
@@ -121,7 +137,7 @@ export function apply(ctx, config) {
     clearManual: () => { manualAtDesk = null },
     describe: () => (manualAtDesk !== null
       ? '手动固定'
-      : `键鼠空闲 ${config.idleAwayMinutes} 分钟自动切换${monitor.state === null ? '（当前平台不支持，默认判定在电脑前）' : ''}`),
+      : `键鼠空闲 ${live(config.idleAwayMinutes) ?? 5} 分钟自动切换${monitor.state === null ? '（当前平台不支持，默认判定在电脑前）' : ''}`),
   }
   monitor.start()
   ctx.effect(() => () => monitor.stop())
@@ -137,9 +153,9 @@ export function apply(ctx, config) {
       return null
     },
     primaryConversation: () => primaryConversationId,
-    approvalMode: () => config.approvalMode,
+    approvalMode: () => live(config.approvalMode) ?? 'wechat-driven',
     isAtDesk: () => atDeskController.current(),
-    timeoutMs: () => config.answerTimeoutMs,
+    timeoutMs: () => live(config.answerTimeoutMs) ?? 600_000,
   })
   answerer.register()
 
@@ -157,7 +173,7 @@ export function apply(ctx, config) {
     noteSession: (sessionId) => wechatDrivenSessions.add(sessionId),
     answerer,
     atDeskController,
-    channelState: () => `审批通道: ${config.approvalMode === 'all' ? '所有会话（离席时）' : '仅微信驱动的会话'}；${atDeskController.describe()}`,
+    channelState: () => `审批通道: ${(live(config.approvalMode) ?? 'wechat-driven') === 'all' ? '所有会话（离席时）' : '仅微信驱动的会话'}；${atDeskController.describe()}`,
   })
 
   transport.on('login', ({ qrUrl }) => {
@@ -182,7 +198,7 @@ export function apply(ctx, config) {
       `[wechat-workbench] 收到微信消息 from=${conversationId} text=${JSON.stringify((text ?? '').slice(0, 50))}\n`,
     )
     try {
-      if (config.bootstrap && config.allowWxids.length === 0) {
+      if (live(config.bootstrap) && wxids().length === 0) {
         logger.warn(
           `wechat-workbench: [bootstrap] 收到消息 conversation=${conversationId} sender=${senderId} (${senderName})`,
         )
@@ -193,9 +209,9 @@ export function apply(ctx, config) {
       }
       // Fail-closed authorization (read live: allowWxids/allowGroups are
       // volatile and may change through the workbench form at any time).
-      const peerAllowed = conversationId !== null && config.allowWxids.includes(conversationId)
-      const groupAllowed = config.allowGroups && groupId !== null
-        && (config.allowWxids.includes(senderId) || config.allowWxids.includes(senderName))
+      const peerAllowed = conversationId !== null && wxids().includes(conversationId)
+      const groupAllowed = live(config.allowGroups) && groupId !== null
+        && (wxids().includes(senderId) || wxids().includes(senderName))
       if (!peerAllowed && !groupAllowed) {
         logger.warn(`wechat-workbench: 拒绝未授权消息 from=${conversationId} sender=${senderId}`)
         transport.send(conversationId, '⛔ 未授权。')
