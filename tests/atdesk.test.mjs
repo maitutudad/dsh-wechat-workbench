@@ -28,7 +28,7 @@ test('polling updates state with hysteresis-free transitions', async () => {
     monitor.inFlight = true
     try {
       const idle = await monitor.readIdleSeconds()
-      if (idle !== null) monitor.state = idle < monitor.idleAwaySeconds
+      if (idle !== null) monitor.state = idle < monitor.idleAwaySeconds()
     } finally {
       monitor.inFlight = false
     }

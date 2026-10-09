@@ -74,10 +74,13 @@ export class WeChatAnswerer {
     this.transport = transport
     this.conversationFor = conversationFor
     this.primaryConversation = primaryConversation
-    this.approvalMode = approvalMode ?? 'wechat-driven'
+    // Config inputs may be plain values or live getters (volatile config
+    // edited through the workbench form); normalize so both work.
+    const asGetter = (value, fallback) => (typeof value === 'function' ? value : () => value ?? fallback)
+    this.approvalMode = asGetter(approvalMode, 'wechat-driven')
     /** Live provider so automatic idle detection updates instantly. */
     this.isAtDesk = isAtDesk ?? (() => true)
-    this.timeoutMs = timeoutMs ?? ANSWER_TIMEOUT_MS_DEFAULT
+    this.timeoutMs = asGetter(timeoutMs, ANSWER_TIMEOUT_MS_DEFAULT)
     /** @type {Map<string, {resolve: (v: string) => void, question: any}>} pending replies by conversation */
     this.pending = new Map()
   }
@@ -90,7 +93,7 @@ export class WeChatAnswerer {
       //  - sessions WeChat drives -> always ours.
       //  - otherwise (approvalMode 'all', user away) -> route to the primary
       //    conversation as the approval channel.
-      const awayChannel = this.approvalMode === 'all' && !this.isAtDesk()
+      const awayChannel = this.approvalMode() === 'all' && !this.isAtDesk()
         ? this.primaryConversation() : null
       const conversationId = bound ?? awayChannel
       if (!conversationId) return next() // GUI-owned question -> GUI answers
@@ -105,7 +108,7 @@ export class WeChatAnswerer {
 
       const reply = await new Promise((resolve) => {
         this.pending.set(conversationId, { resolve, question })
-        const timer = setTimeout(() => resolve(null), this.timeoutMs)
+        const timer = setTimeout(() => resolve(null), this.timeoutMs())
         timer.unref?.()
       })
       this.pending.delete(conversationId)

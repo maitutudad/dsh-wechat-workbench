@@ -30,7 +30,9 @@ export class AtDeskMonitor {
    */
   constructor({ logger, idleAwaySeconds = 300, pollMs = 30_000 } = {}) {
     this.logger = logger
-    this.idleAwaySeconds = idleAwaySeconds
+    // Plain value or live getter (volatile idleAwayMinutes edited in the
+    // workbench form); normalized so both work.
+    this.idleAwaySeconds = typeof idleAwaySeconds === 'function' ? idleAwaySeconds : () => idleAwaySeconds
     this.pollMs = pollMs
     /** @type {boolean | null} true=at desk, false=away, null=unknown */
     this.state = null
@@ -50,7 +52,7 @@ export class AtDeskMonitor {
       try {
         const idle = await this.readIdleSeconds()
         if (idle !== null) {
-          const away = idle >= this.idleAwaySeconds
+          const away = idle >= this.idleAwaySeconds()
           const next = !away
           if (this.state === null ? !next : next !== this.state) {
             this.state = next

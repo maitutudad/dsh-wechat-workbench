@@ -107,16 +107,19 @@ hot-apply when the profile has `patchReload: live`.
 
 ## Configuration
 
-| Key | Default | Meaning |
-|---|---|---|
-| `allowWxids` | `[]` | Authorized WeChat ids; **empty denies everyone** |
-| `allowGroups` | `false` | Respond in group chats (whitelisted sender must @-mention) |
-| `bootstrap` | `false` | Reply with the sender's id instead of executing anything |
-| `approvalMode` | `wechat-driven` | `'all'` routes every session's questions to WeChat when away |
-| `idleAwayMinutes` | `5` | Keyboard/mouse idle that counts as away |
-| `pythonBin` | `python3` | Interpreter for the transport child |
-| `accountId` | `dsh` | iLink account key for token persistence |
-| `answerTimeoutMs` | `600000` | WeChat answer timeout before falling back to the GUI |
+| Key | Default | Live | Meaning |
+|---|---|---|---|
+| `allowWxids` | `[]` | ✎ | Authorized WeChat ids; **empty denies everyone** |
+| `allowGroups` | `false` | ✎ | Respond in group chats (whitelisted sender must @-mention) |
+| `bootstrap` | `false` | ✎ | Reply with the sender's id instead of executing anything |
+| `approvalMode` | `wechat-driven` | ✎ | `'all'` routes every session's questions to WeChat when away |
+| `idleAwayMinutes` | `5` | ✎ | Keyboard/mouse idle that counts as away |
+| `pythonBin` | `python3` | ↻ | Interpreter for the transport child (restart to apply) |
+| `accountId` | `dsh` | ↻ | iLink account key for token persistence (restart to apply) |
+| `answerTimeoutMs` | `600000` | ✎ | WeChat answer timeout before falling back to the GUI |
+
+✎ fields are volatile: editable in the workbench 插件 config form (or by
+hand), applied live without a restart. ↻ fields apply on the next start.
 
 ## Security model
 
@@ -150,6 +153,10 @@ loader conventions) live in [docs/INTEGRATION-NOTES.zh.md](docs/INTEGRATION-NOTE
 
 - The iLink Bot channel is gray-release; protocol changes land in
   `wechat-agent-sdk` — upgrade the dependency, this plugin owns no protocol code.
+- Media download can fail while `wechat-agent-sdk` 0.2.1's CDN request shape
+  returns `400` even for fresh images; the session then records an explicit
+  `[媒体接收失败]` note instead of the attachment. Upgrading the SDK when a
+  fix ships should restore media inbound.
 - Inbound images are inlined up to the DSH 20 MiB image intake limit; larger
   images and all other files are saved to `~/.dsh-wechat-workbench/media/` and
   referenced by path for the agent's fs tools.
@@ -160,4 +167,5 @@ loader conventions) live in [docs/INTEGRATION-NOTES.zh.md](docs/INTEGRATION-NOTE
 
 ## License
 
-[MIT](LICENSE). Depends on [wechat-agent-sdk](https://github.com/AIhubmix/wechat-agent-sdk) (MIT) for the iLink transport.
+[MIT](LICENSE). Depends on [wechat-agent-sdk](https://pypi.org/project/wechat-agent-sdk/)
+(MIT, PyPI-distributed) for the iLink transport.

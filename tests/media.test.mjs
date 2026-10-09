@@ -81,6 +81,21 @@ test('wechat_send_file tool pushes a local file through the transport', async ()
   assert.equal(sent[0].fileName, 'out.png')
 })
 
+test('failed media download surfaces an explicit note in the prompt text', async () => {
+  const fakeCtx = makeCtxWithSession()
+  const { router } = buildMediaHarness(fakeCtx)
+  await router.handle({
+    conversationId: 'wxid_me',
+    text: '看看这张',
+    media: [{ kind: 'failed', fileName: 'photo.jpg', mediaType: 'image', bytes: 0, error: 'HTTPStatusError: 400 Bad Request' }],
+  })
+  const prompt = fakeCtx.prompts.at(-1)
+  const textPart = prompt.content.find((part) => part.type === 'text')
+  assert.ok(textPart.text.includes('photo.jpg接收失败'), 'failure note names the file')
+  assert.ok(textPart.text.includes('400'), 'failure note carries the error')
+  assert.ok(!prompt.content.some((p) => p.type === 'image'), 'no image part for a failed download')
+})
+
 // ---------------------------------------------------------------- helpers
 function makeCtxWithSession() {
   const prompts = []
@@ -88,7 +103,7 @@ function makeCtxWithSession() {
     prompts,
     on() { /* no waterfall in this harness */ },
     sessionController: {
-      list: async () => ({ items: [{ sessionId: 's1', updatedAt: Date.now(), running: false, blank: false, projections: { title: { text: 'T' } } }] }),
+      list: async () => ({ items: [{ sessionId: 's1', updatedAt: Date.now(), running: false, blank: false, projections: { kind: 'sequenced', asOfSeq: 1, values: { title: 'T' } } }] }),
       create: async () => ({ sessionId: 's-created' }),
       rename: async () => ({}),
       prompt: async (request) => { prompts.push(request); return { accepted: true } },

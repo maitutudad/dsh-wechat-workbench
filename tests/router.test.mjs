@@ -22,8 +22,8 @@ function makeFakeCtx({ events = [] } = {}) {
   const prompts = []
   const streams = new Map()
   const sessions = [
-    { sessionId: 's-old', updatedAt: Date.now() - 3_600_000, running: false, blank: false, projections: { title: { text: '昨天的重构任务' } } },
-    { sessionId: 's-new', updatedAt: Date.now() - 60_000, running: false, blank: false, projections: { title: { text: '今天的调研' } } },
+    { sessionId: 's-old', updatedAt: Date.now() - 3_600_000, running: false, blank: false, projections: { kind: 'sequenced', asOfSeq: 3, values: { title: '昨天的重构任务' } } },
+    { sessionId: 's-new', updatedAt: Date.now() - 60_000, running: false, blank: false, projections: { kind: 'sequenced', asOfSeq: 7, values: { title: '今天的调研' } } },
   ]
   const sleep = (ms) => new Promise((resolve) => {
     const timer = setTimeout(resolve, ms)
@@ -205,7 +205,7 @@ test('answerer falls through for GUI-owned sessions in wechat-driven mode', asyn
 test('approvalMode all: GUI session questions route to the primary conversation when away', async () => {
   const fakeCtx = makeFakeCtx()
   const { answerer, transport } = buildHarness(fakeCtx)
-  answerer.approvalMode = 'all'
+  answerer.approvalMode = () => 'all'
   answerer.setPrimary('wxid_me')
   answerer.isAtDesk = () => false // idle detector says away
   const question = {
@@ -227,7 +227,7 @@ test('approvalMode all: GUI session questions route to the primary conversation 
 test('approvalMode all + at desk: GUI questions fall through to the GUI', async () => {
   const fakeCtx = makeFakeCtx()
   const { answerer, transport } = buildHarness(fakeCtx)
-  answerer.approvalMode = 'all'
+  answerer.approvalMode = () => 'all'
   answerer.setPrimary('wxid_me')
   answerer.isAtDesk = () => true // idle detector says at desk
   let fellThrough = false
@@ -297,6 +297,33 @@ test('follow stream failure falls back to readSession polling and still pushes t
   await waitFor(() => transport.sent.some((s) => s.text === '轮询拿到的回复'), 8_000)
   // And it must NOT push the GUI-turn replay from the initial /ss selection.
   assert.equal(transport.sent.filter((s) => s.text.includes('昨天的')).length, 0)
+})
+
+test('/info shows workspace and session names plus the approval channel', async () => {
+  const fakeCtx = makeFakeCtx()
+  const { router } = buildHarness(fakeCtx)
+  await router.handle({ conversationId: 'wxid_me', text: '/cd 1' })
+  await router.handle({ conversationId: 'wxid_me', text: '/ss' }) // fills lastListed
+  await router.handle({ conversationId: 'wxid_me', text: '/ss 1' }) // picks s-new
+  const info = await router.handle({ conversationId: 'wxid_me', text: '/info' })
+  assert.match(info, /工作区: DSH_Plugins/)
+  assert.match(info, /会话: 今天的调研（s-new）/)
+  // Without a channelState the channel line is simply absent.
+  assert.doesNotMatch(info, /审批通道/)
+})
+
+test('/info includes the live channelState line when provided', async () => {
+  const fakeCtx = makeFakeCtx()
+  const pointers = new PointerStoreLike(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-wx-i-')), 'p.json'))
+  const router = new Router({
+    ctx: fakeCtx,
+    pointers,
+    transport: { send: () => {} },
+    noteSession: () => {},
+    channelState: () => '审批通道: 所有会话（离席时）；手动固定',
+  })
+  const info = await router.handle({ conversationId: 'wxid_me', text: '/info' })
+  assert.match(info, /审批通道: 所有会话（离席时）；手动固定/)
 })
 
 function waitFor(predicate, timeoutMs = 2_000) {

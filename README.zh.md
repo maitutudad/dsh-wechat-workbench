@@ -57,16 +57,18 @@ cd <插件目录>
 
 ## 配置项
 
-| 键 | 默认 | 说明 |
-|---|---|---|
-| `allowWxids` | `[]` | 授权名单；**空 = 全部拒绝** |
-| `allowGroups` | `false` | 群聊响应（白名单发送者需 @机器人） |
-| `bootstrap` | `false` | 引导模式：只回复来信号 id，不执行任何指令 |
-| `approvalMode` | `wechat-driven` | `'all'` = 离席时所有会话的审批推微信 |
-| `idleAwayMinutes` | `5` | 键鼠空闲判定离席的分钟数 |
-| `pythonBin` | `python3` | 传输子进程解释器 |
-| `accountId` | `dsh` | iLink token 持久化键 |
-| `answerTimeoutMs` | `600000` | 微信审批超时后回退 GUI |
+| 键 | 默认 | 即时 | 说明 |
+|---|---|---|---|
+| `allowWxids` | `[]` | ✎ | 授权名单；**空 = 全部拒绝** |
+| `allowGroups` | `false` | ✎ | 群聊响应（白名单发送者需 @机器人） |
+| `bootstrap` | `false` | ✎ | 引导模式：只回复来信号 id，不执行任何指令 |
+| `approvalMode` | `wechat-driven` | ✎ | `'all'` = 离席时所有会话的审批推微信 |
+| `idleAwayMinutes` | `5` | ✎ | 键鼠空闲判定离席的分钟数 |
+| `pythonBin` | `python3` | ↻ | 传输子进程解释器（重启生效） |
+| `accountId` | `dsh` | ↻ | iLink token 持久化键（重启生效） |
+| `answerTimeoutMs` | `600000` | ✎ | 微信审批超时后回退 GUI |
+
+✎ 为 volatile 字段：工作台「插件」表单（或手工 patch）改完即时生效，无需重启；↻ 字段重启后生效。
 
 ## 安全模型
 
@@ -88,6 +90,8 @@ npm test    # 31 个测试，无外部依赖
 ## 已知限制
 
 - iLink Bot 通道处于灰度，协议变更收敛在 `wechat-agent-sdk` 依赖里，升级即可。
+- `wechat-agent-sdk` 0.2.1 的 CDN 下载请求形状对新鲜图片也可能返回 `400`，此时会话里会记录
+  一条明确的 `[媒体接收失败]` 说明而不是附件本身；上游修复后升级依赖即可恢复。
 - 入站图片内联上限为 DSH 的 20 MiB 图片摄入限制；超大图与其他文件保存到
   `~/.dsh-wechat-workbench/media/`，以路径形式告知 Agent 的 fs 工具。
 - 语音消息以转写文本进入会话，音频本体作为文件附件保存。
@@ -95,4 +99,4 @@ npm test    # 31 个测试，无外部依赖
 
 ## License
 
-[MIT](LICENSE)。iLink 传输依赖 [wechat-agent-sdk](https://github.com/AIhubmix/wechat-agent-sdk)（MIT）。
+[MIT](LICENSE)。iLink 传输依赖 [wechat-agent-sdk](https://pypi.org/project/wechat-agent-sdk/)（MIT，PyPI 分发）。

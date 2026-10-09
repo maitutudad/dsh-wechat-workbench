@@ -28,6 +28,10 @@ import logging
 import sys
 
 from wechat_agent_sdk import WeChatTransport
+
+# SDK 0.2.1's download goes to GET /c2c?encrypted_query_param=... which the CDN
+# answers with 400 even for fresh images; /c2c/download is the fallback shape.
+CDN_BASE = "https://novac2c.cdn.weixin.qq.com/c2c"
 from wechat_agent_sdk.api.auth import LoginStatus
 
 logging.basicConfig(
@@ -104,6 +108,27 @@ def _guess_mime(file_name: str) -> str:
     return guessed or "application/octet-stream"
 
 
+async def _cdn_variant_download(media) -> bytes:
+    """Direct CDN GET via the /download subpath, decrypting like the SDK."""
+    import httpx
+    from wechat_agent_sdk.media.crypto import decode_aes_key, decrypt
+
+    url = f"{CDN_BASE}/download?encrypted_query_param={media.cdn_param}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, timeout=60.0)
+        resp.raise_for_status()
+    key = decode_aes_key(media.aes_key, getattr(media, "aeskey_hex", "") or "")
+    return decrypt(resp.content, key)
+
+
+async def _download_bytes(transport, media) -> bytes:
+    """SDK download with the /download fallback for SDK 0.2.1's CDN 400s."""
+    try:
+        return await transport.download_media(media)
+    except Exception:
+        return await _cdn_variant_download(media)
+
+
 async def _download_and_save(message_id: str, index: int, media) -> dict | None:
     transport = _state["transport"]
     media_dir = _state.get("media_dir")
@@ -115,7 +140,7 @@ async def _download_and_save(message_id: str, index: int, media) -> dict | None:
     file_name = media.file_name or f"{message_id}-{index}.{media.type}"
     safe_name = os.path.basename(file_name) or f"{message_id}-{index}.bin"
     path = os.path.join(media_dir, f"{message_id}-{index}-{safe_name}")
-    data = await transport.download_media(media)
+    data = await _download_bytes(transport, media)
     with open(path, "wb") as fh:
         fh.write(data)
     return {
@@ -182,8 +207,17 @@ async def _message_loop(transport: WeChatTransport, stop: asyncio.Event) -> None
                 )
                 if descriptor:
                     media_entries.append(descriptor)
-            except Exception:
+            except Exception as exc:
                 logger.exception("media download failed (%s)", media.type)
+                # Surface the failure to the session prompt instead of
+                # silently dropping the attachment.
+                media_entries.append({
+                    "kind": "failed",
+                    "fileName": getattr(media, "file_name", "") or "",
+                    "mediaType": _media_kind(media.type),
+                    "bytes": 0,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
         _emit(
             {
                 "op": "message",

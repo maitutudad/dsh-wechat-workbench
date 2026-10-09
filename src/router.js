@@ -40,13 +40,15 @@ export class Router {
    * @param {import('./transport.js').WeChatTransportChild} args.transport
    * @param {(sessionId: string) => void} args.noteSession - track WeChat-driven sessions
    */
-  constructor({ ctx, pointers, transport, noteSession, answerer, atDeskController }) {
+  constructor({ ctx, pointers, transport, noteSession, answerer, atDeskController, channelState }) {
     this.ctx = ctx
     this.pointers = pointers
     this.transport = transport
     this.noteSession = noteSession
     this.answerer = answerer ?? null
-    this.atDeskController = atDeskController ?? null
+    this.atDeskController = atDeskController
+    /** Optional live approval-channel description for /info. */
+    this.channelState = channelState ?? null
     /** @type {Map<string, SessionFollower>} sessionId -> follower */
     this.followers = new Map()
     /** @type {Map<string, Set<string>>} sessionId -> conversation ids */
@@ -289,10 +291,24 @@ export class Router {
     return lines.length ? `📜 最近记录：\n${lines.slice(-limit).join('\n')}` : '（没有可显示的文本记录）'
   }
 
-  info(conversationId) {
+  async info(conversationId) {
     const pointer = this.pointers.get(conversationId)
     const busy = pointer.sessionId && this.busy.has(conversationId) ? '\n⏳ 上一条消息仍在处理中' : ''
-    return `ℹ️ 工作区: ${pointer.workspaceId ?? '（未选择）'}\n会话: ${pointer.sessionId ?? '（未选择）'}${busy}`
+    let wsName = pointer.workspaceId ?? '（未选择）'
+    let session = pointer.sessionId ?? '（未选择）'
+    try {
+      const workspaces = this.workspacesFrom(await this.baseline())
+      const ws = workspaces.find((/** @type {any} */ w) => w.id === pointer.workspaceId)
+      if (ws) wsName = ws.name
+      if (pointer.sessionId) {
+        const list = await this.ctx.sessionController.list({})
+        const items = Array.isArray(list) ? list : (list.items ?? [])
+        const summary = items.find((/** @type {any} */ s) => s.sessionId === pointer.sessionId)
+        if (summary) session = `${sessionTitle(summary)}（${truncate(pointer.sessionId, 12)}）`
+      }
+    } catch { /* best-effort enrichment; ids stay readable */ }
+    const channel = this.channelState ? `\n${this.channelState()}` : ''
+    return `ℹ️ 工作区: ${wsName}\n会话: ${session}${channel}${busy}`
   }
 
   // ------------------------------------------------------------------
@@ -377,6 +393,10 @@ function buildContentParts(text, media) {
   const notes = []
   for (const entry of media ?? []) {
     try {
+      if (entry.kind === 'failed') {
+        notes.push(`[${entry.fileName || entry.mediaType || '媒体'}接收失败：${entry.error ?? '下载错误'}]`)
+        continue
+      }
       if (entry.kind === 'image' && (entry.bytes ?? 0) <= MAX_INLINE_IMAGE_BYTES) {
         const data = fs.readFileSync(entry.path)
         parts.push({
@@ -398,8 +418,9 @@ function buildContentParts(text, media) {
 
 
 function sessionTitle(summary) {
-  const hint = summary?.projections?.title?.text ?? summary?.projections?.title
-  ?? summary?.title
+  // The list projection carries titles at projections.values.title (a plain
+  // string; see dsh session-title's SessionProjectionMap).
+  const hint = summary?.projections?.values?.title ?? summary?.title
   return typeof hint === 'string' && hint.trim() ? truncate(hint, 30) : truncate(summary.sessionId, 12)
 }
 

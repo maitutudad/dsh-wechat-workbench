@@ -32,3 +32,12 @@ npm name `dsh-wechat-remote` was taken by an unrelated package.
 - Follower degrades to `sessionQuery` polling when the live follow stream
   throws; assistant text extraction follows the canonical
   `data.message.content` block shape.
+- `/ss` and `/info` show session titles from the list projection
+  (`projections.values.title`); `/info` also names the workspace and reports
+  the approval-channel state.
+- Volatile config fields (`allowWxids`, `allowGroups`, `bootstrap`,
+  `approvalMode`, `idleAwayMinutes`, `answerTimeoutMs`) edit live through the
+  workbench 插件 config form; `pythonBin`/`accountId` apply on restart.
+- Media download failures surface as an explicit `[媒体接收失败]` note in
+  the session prompt, with a `/c2c/download` retry variant against
+  `wechat-agent-sdk` 0.2.1's CDN `400`s.
