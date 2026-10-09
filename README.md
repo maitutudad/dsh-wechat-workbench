@@ -65,16 +65,17 @@ Design promises:
 
 ## Install
 
-From git (no build step — the plugin is plain ESM JavaScript):
+Recent DSH builds ship a plugin manager in the Web workbench (the 「插件」
+panel): install by absolute local path (development), git URL, or npm name,
+enable the plugin, and edit its config in the generated form — no manual
+profile editing. The form writes the same patch layer described below, so
+hand edits and UI edits stay interchangeable.
+
+CLI equivalents (no build step — the plugin is plain ESM JavaScript):
 
 ```sh
-dsh plugin --profile web add github:<you>/dsh-wechat-workbench
-```
-
-or from npm once published:
-
-```sh
-dsh plugin --profile web add dsh-wechat-workbench
+dsh plugin --profile web add github:<you>/dsh-wechat-workbench   # from git
+dsh plugin --profile web add dsh-wechat-workbench                # from npm once published
 ```
 
 `@deepseek-ai/*` packages are peer dependencies; when running DSH from a
@@ -85,9 +86,10 @@ cd "$(dsh plugin --profile web dir dsh-wechat-workbench 2>/dev/null || echo .)"
 ./scripts/setup-python.sh          # creates .venv, installs wechat-agent-sdk + qrcode
 ```
 
-Then configure in `$DSH_HOME/profiles/web/cordis.patch.yml` — note the patch
-semantics: a non-insert entry **targets an existing row by id and replaces the
-named properties wholesale**:
+To configure by hand instead of the UI, edit
+`$DSH_HOME/profiles/web/cordis.patch.yml` — patch semantics: a non-insert
+entry **targets an existing row by id and replaces the named properties
+wholesale**:
 
 ```yaml
 - id: wechat-workbench
@@ -132,7 +134,7 @@ hot-apply when the profile has `patchReload: live`.
 
 ```sh
 npm install --no-save --prefix <dsh-checkout>   # not required; peers resolve at runtime
-npm test                                        # 26 tests, no external services
+npm test                                        # 31 tests, no external services
 ```
 
 The suite includes contract tests written against DSH's real service shapes

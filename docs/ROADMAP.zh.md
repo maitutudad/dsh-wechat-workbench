@@ -5,7 +5,7 @@
 ### L1/L2：单元 + 假 Context 集成（已就绪）
 
 ```sh
-cd dsh-wechat-cordis && npm test     # node --test，无任何外部依赖
+cd dsh-wechat-workbench && npm test     # node --test，无任何外部依赖
 ```
 
 覆盖：命令解析、审批应答匹配（序号/标签/y/n/自定义）、事件摘要、指针持久化与损坏容错，以及完整导航流 `/ws → /cd → /ss → /ss <n> → 发消息 → follow 流推送最终回复`、无指针自动建会话、应答器 claim/回退规则。假 `sessionController`/`workspaceController` 按 `packages/api/session-controller` 的真实签名实现。

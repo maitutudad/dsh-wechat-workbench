@@ -2,7 +2,9 @@
 
 ## 0.1.0 — 2026-10-08
 
-First release.
+First release. Developed as `dsh-wechat-remote`, renamed before publishing:
+the plugin is a second workbench client, not just a remote control, and the
+npm name `dsh-wechat-remote` was taken by an unrelated package.
 
 - WeChat ⇄ DSH workbench bridge over the iLink Bot long connection
   (community `wechat-agent-sdk` transport child, supervised with backoff).
@@ -20,19 +22,13 @@ First release.
   the approval channel by keyboard/mouse idle; `/atdesk on|off|auto` override.
 - `wechat_notify` tool: any session's agent can proactively push a message to
   the notification conversation.
-- Fail-closed authorization (`allowWxids`), group-chat gating with @-mention,
-  bootstrap mode that reveals the caller's conversation id.
-- Follower degrades to `sessionQuery` polling when the live follow stream
-  throws; assistant text extraction follows the canonical
-  `data.message.content` block shape.
-
-### Added (unreleased)
-
 - **Media inbound**: WeChat images download to `~/.dsh-wechat-workbench/media/`
   and are inlined into the session prompt as base64 image parts (vision);
   files/voice/video are saved and referenced by path in the prompt text.
 - **`wechat_send_file` tool**: any session's agent can push a local file to
   the notification conversation; extension decides image/video/file rendering.
-- Renamed from `dsh-wechat-remote` to `dsh-wechat-workbench` — the plugin is a
-  second workbench client, not just a remote control. npm name `dsh-wechat-remote`
-  was taken by an unrelated package.
+- Fail-closed authorization (`allowWxids`), group-chat gating with @-mention,
+  bootstrap mode that reveals the caller's conversation id.
+- Follower degrades to `sessionQuery` polling when the live follow stream
+  throws; assistant text extraction follows the canonical
+  `data.message.content` block shape.

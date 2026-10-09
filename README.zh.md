@@ -24,12 +24,15 @@
 
 ## 安装
 
-```sh
-# 从 GitHub 直装（纯 ESM JS，无需构建授权）
-dsh plugin --profile web add github:<you>/dsh-wechat-workbench
+较新版本的 DSH 在 Web 工作台内置插件管理页（「插件」面板）：支持按本地绝对路径
+（开发）、git 地址或 npm 包名安装，启用后在自动生成的表单里改配置，无需手工编辑
+profile。表单写入的就是下面这层 patch，手工与 UI 编辑可互换。
 
-# 或从 npm
-dsh plugin --profile web add dsh-wechat-workbench
+等价的 CLI（纯 ESM JS，无需构建）：
+
+```sh
+dsh plugin --profile web add github:<you>/dsh-wechat-workbench   # 从 GitHub
+dsh plugin --profile web add dsh-wechat-workbench                 # 从 npm（发布后）
 ```
 
 准备 Python 环境（iLink 传输子进程依赖）：
@@ -39,7 +42,7 @@ cd <插件目录>
 ./scripts/setup-python.sh    # 创建 .venv 并安装 wechat-agent-sdk + qrcode
 ```
 
-配置 `$DSH_HOME/profiles/web/cordis.patch.yml`。⚠️ **patch 语义**：不带 `insert` 的条目按 id 定向覆盖已有行，且 `config` 是**整体替换不是合并**：
+如需绕过 UI 手工配置，编辑 `$DSH_HOME/profiles/web/cordis.patch.yml`。⚠️ **patch 语义**：不带 `insert` 的条目按 id 定向覆盖已有行，且 `config` 是**整体替换不是合并**：
 
 ```yaml
 - id: wechat-workbench
@@ -75,7 +78,7 @@ cd <插件目录>
 ## 开发
 
 ```sh
-npm test    # 26 个测试，无外部依赖
+npm test    # 31 个测试，无外部依赖
 ```
 
 包含针对 DSH 真实服务形状的合同测试（`SessionFollowRequest.address`、工作区 baseline 帧、`sessionQuery.readSession`、`user-questions/request` waterfall），以及用假 `wechat_agent_sdk` 模块驱动真实 `python/transport.py` 的协议测试。
