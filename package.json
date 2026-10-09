@@ -1,0 +1,59 @@
+{
+  "name": "dsh-wechat-remote",
+  "version": "0.1.0",
+  "description": "WeChat remote workbench for DeepSeek Harness: browse workspaces, continue sessions, and approve agent questions over the iLink Bot long connection",
+  "type": "module",
+  "main": "src/index.js",
+  "files": [
+    "src",
+    "python",
+    "scripts",
+    "tests",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test 'tests/*.test.mjs'",
+    "setup:python": "bash scripts/setup-python.sh"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "wechat",
+    "weixin",
+    "wechat-agent",
+    "ilink",
+    "agent",
+    "remote"
+  ],
+  "author": "dsh-wechat-remote contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taber/dsh-wechat-remote.git"
+  },
+  "bugs": {
+    "url": "https://github.com/taber/dsh-wechat-remote/issues"
+  },
+  "homepage": "https://github.com/taber/dsh-wechat-remote#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-api-session-controller": "*",
+    "@deepseek-ai/dsh-api-workspace-controller": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-user-questions": "*",
+    "@deepseek-ai/schemastery": "*"
+  }
+}

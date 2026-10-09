@@ -1,0 +1,5 @@
+wechat-agent-sdk>=0.2.1
+qrcode>=7
+# Intel-mac Python 3.13 has no prebuilt wheel for newer cryptography; pin if
+# pip tries to build from source (requires Rust):
+# cryptography==44.0.0

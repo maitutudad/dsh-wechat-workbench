@@ -1,0 +1,14 @@
+# dsh-wechat-remote — WeChat remote workbench layer.
+# Mounted by `dsh plugin --profile <name> add file:...`; rows are resolved by
+# package name from the profile's dependency tree.
+- insert:
+    - id: wechat-remote
+      name: dsh-wechat-remote
+      # Required settings are intentionally non-default so an accidental
+      # install without configuration fails closed instead of opening the
+      # machine to every WeChat peer. Set them in the profile/home patch:
+      #   wechat-remote:
+      #     allowWxids: [wxid_xxxxxxxx]
+      config:
+        allowWxids: []
+        allowGroups: false

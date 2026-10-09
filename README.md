@@ -1,0 +1,159 @@
+# dsh-wechat-remote
+
+[English](README.md) | [中文](README.zh.md)
+
+A [DeepSeek Harness](https://github.com/deepseek-harness/deepseek-harness) (DSH) Cordis plugin that turns **WeChat into a second client of your workbench** — over WeChat's official iLink Bot long connection. Browse workspaces, switch sessions, continue conversations, watch progress, and approve agent questions from your phone. Sessions are the same durable sessions the Web GUI serves; nothing is duplicated.
+
+```
+WeChat ⇄ python/transport.py (iLink long connection, wechat-agent-sdk)
+        ⇄ this plugin (Cordis, in-process)
+            ├─ ctx.workspaceController   workspace navigation projection
+            ├─ ctx.sessionController     list / create / prompt / page / follow
+            ├─ ctx.sessionQuery          durable log reads (tail / polling fallback)
+            ├─ ctx.userQuestions         approval answerer (waterfall)
+            ├─ ctx.tools                 wechat_notify tool for any agent
+            └─ atdesk monitor            keyboard/mouse idle → auto channel switch
+```
+
+## What it does
+
+| WeChat command | Action |
+|---|---|
+| `/ws` | List workspaces |
+| `/cd <n>` | Switch the active workspace (clears the session pointer) |
+| `/ss` | List sessions in the active workspace (title, activity, running state) |
+| `/ss <n>` | Select a session and continue it |
+| `/new [title]` | Create a session in the active workspace |
+| `/tail [n]` | Show the last n messages of the current session |
+| `/info` | Current pointer and channel state |
+| `/atdesk on\|off\|auto` | Manual override / automatic at-desk detection status |
+| plain text | Ordinary follow-up prompt on the pointed session |
+
+Design promises:
+
+- **No parallel session universe.** WeChat holds only a pointer
+  `{workspaceId, sessionId}` per conversation. A session started from WeChat
+  appears in the GUI and vice versa — same durable timeline, same tools,
+  same permissions, same model routing.
+- **GUI-initiated turns stay silent.** Only turns started from WeChat push
+  progress lines (throttled) and the final assistant reply.
+- **WeChat is an approval channel.** Every human decision the agent makes
+  (`ask_user_question`, plan reviews, permission prompts) flows through
+  DSH's `user-questions/request` waterfall. With `approvalMode: 'all'` and the
+  at-desk detector reporting *away*, questions from **any** session are pushed
+  to WeChat; reply `1` / an option label / `y` / `n` (or custom text) to answer.
+  Unanswered questions fall back to the GUI after a timeout.
+- **`wechat_notify` tool.** Any session's agent can proactively push a message
+  to the notification conversation ("ping me on WeChat when the build fails").
+- **Automatic at-desk detection.** Keyboard/mouse idle beyond
+  `idleAwayMinutes` flips approvals to WeChat; one touch flips back. Unknown
+  platforms count as at-desk (fail toward the GUI).
+
+## Requirements
+
+- Node.js ≥ 20, a DSH checkout or install with the `web` composition
+- Python ≥ 3.11 with [`wechat-agent-sdk`](https://pypi.org/project/wechat-agent-sdk/)
+  (community SDK, MIT — this plugin contains no iLink protocol code)
+- A WeChat account enrolled in the agent/iLink gray release (real-name
+  verification required), on a machine that can reach `ilinkai.weixin.qq.com`
+
+## Install
+
+From git (no build step — the plugin is plain ESM JavaScript):
+
+```sh
+dsh plugin --profile web add github:<you>/dsh-wechat-remote
+```
+
+or from npm once published:
+
+```sh
+dsh plugin --profile web add dsh-wechat-remote
+```
+
+`@deepseek-ai/*` packages are peer dependencies; when running DSH from a
+source checkout they resolve through the checkout's own tree. Set up Python:
+
+```sh
+cd "$(dsh plugin --profile web dir dsh-wechat-remote 2>/dev/null || echo .)"
+./scripts/setup-python.sh          # creates .venv, installs wechat-agent-sdk + qrcode
+```
+
+Then configure in `$DSH_HOME/profiles/web/cordis.patch.yml` — note the patch
+semantics: a non-insert entry **targets an existing row by id and replaces the
+named properties wholesale**:
+
+```yaml
+- id: wechat-remote
+  config:
+    pythonBin: /abs/path/to/dsh-wechat-remote/.venv/bin/python
+    allowWxids: ['o9cq8xxxx@im.wechat']   # fail-closed when empty
+    bootstrap: true                        # first run: replies with your id
+    approvalMode: 'all'                    # WeChat answers every session's questions when away
+```
+
+Start `dsh --profile web`, scan the login QR printed to the terminal (or open
+the URL in WeChat), send any message to the bot — it replies with your
+conversation id for the allowlist — then set `bootstrap: false`. Config edits
+hot-apply when the profile has `patchReload: live`.
+
+## Configuration
+
+| Key | Default | Meaning |
+|---|---|---|
+| `allowWxids` | `[]` | Authorized WeChat ids; **empty denies everyone** |
+| `allowGroups` | `false` | Respond in group chats (whitelisted sender must @-mention) |
+| `bootstrap` | `false` | Reply with the sender's id instead of executing anything |
+| `approvalMode` | `wechat-driven` | `'all'` routes every session's questions to WeChat when away |
+| `idleAwayMinutes` | `5` | Keyboard/mouse idle that counts as away |
+| `pythonBin` | `python3` | Interpreter for the transport child |
+| `accountId` | `dsh` | iLink account key for token persistence |
+| `answerTimeoutMs` | `600000` | WeChat answer timeout before falling back to the GUI |
+
+## Security model
+
+- **Fail-closed authorization**: empty allowlist = the plugin logs and ignores
+  everything; unauthorized senders get a single rejection line.
+- Approval questions are claimed from WeChat only for sessions WeChat drives
+  (or, in `'all'` mode, when the at-desk detector reports away); everything
+  else falls through to the GUI answerer via `next()`.
+- The iLink token persists under `~/.wechat-agent-sdk/`; `logout()` in
+  `python/transport.py` clears it.
+- No cloud component: messages ride WeChat's iLink channel straight to your
+  machine; DSH executes locally.
+
+## Development
+
+```sh
+npm install --no-save --prefix <dsh-checkout>   # not required; peers resolve at runtime
+npm test                                        # 26 tests, no external services
+```
+
+The suite includes contract tests written against DSH's real service shapes
+(`SessionFollowRequest.address`, workspace follow baseline frames,
+`sessionQuery.readSession`, the `user-questions/request` waterfall) and a
+protocol test that drives the real `python/transport.py` against a fake
+`wechat_agent_sdk` module.
+
+Enable DSH's built-in HMR row in your profile patch to hot-reload plugin code
+on save (config edits hot-apply via `patchReload: live` regardless):
+
+```yaml
+- id: hmr
+  disabled: false
+  config:
+    root: ['.', /abs/path/to/dsh-wechat-remote]
+    ignored: ['**/node_modules/**', '**/.venv/**', '**/.*']
+```
+
+## Known limitations
+
+- The iLink Bot channel is gray-release; protocol changes land in
+  `wechat-agent-sdk` — upgrade the dependency, this plugin owns no protocol code.
+- Media messages (images/voice/files) are not yet forwarded into sessions.
+- The follower degrades to 3-second `sessionQuery` polling if the live follow
+  stream throws, so delivery survives host-internal stream errors.
+
+## License
+
+[MIT](LICENSE). Depends on [wechat-agent-sdk](https://github.com/AIhubmix/wechat-agent-sdk) (MIT) for the iLink transport.
