@@ -41,11 +41,11 @@ const schema = Schema.object({
   bootstrap: Schema.boolean()
     .default(false)
     .volatile()
-    .description('引导模式：不执行任何指令，只回复来信号的 wxid，便于配置 allowWxids'),
+    .description('首次绑定助手：开启后不执行任何指令，只回复来信号的微信 ID，便于填入 allowWxids；配置完请关闭'),
   approvalMode: Schema.string()
     .default('wechat-driven')
     .volatile()
-    .description("审批通道范围：'wechat-driven' 只接管微信驱动会话的问题；'all' 把微信作为所有会话的审批通道（配合 /atdesk 开关）"),
+    .description("哪些提问推到微信：'wechat-driven' 仅微信里发起的会话；'all' 离开电脑后全部会话（配合 /atdesk 开关）"),
   idleAwayMinutes: Schema.number()
     .default(5)
     .volatile()

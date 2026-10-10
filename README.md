@@ -111,7 +111,7 @@ wholesale**:
 
 ### First run (bind WeChat, authorize yourself)
 
-1. Set `bootstrap: true` first — either in the workbench 插件 form or by hand:
+1. Turn on the first-run helper (`bootstrap: true`) — in the workbench 插件 form or by hand:
    ```yaml
    - id: wechat-workbench
      config:
@@ -136,14 +136,14 @@ Config edits hot-apply when the profile has `patchReload: live`.
 | Key | Default | Live | Meaning |
 |---|---|---|---|
 | `allowWxids` | `[]` | ✎ | Authorized WeChat ids; **empty denies everyone** |
-| `bootstrap` | `false` | ✎ | Reply with the sender's id instead of executing anything |
-| `approvalMode` | `wechat-driven` | ✎ | `'all'` routes every session's questions to WeChat when away |
-| `idleAwayMinutes` | `5` | ✎ | Keyboard/mouse idle that counts as away |
+| `bootstrap` | `false` | ✎ | First-run helper: the bot replies with your WeChat id instead of executing anything |
+| `approvalMode` | `wechat-driven` | ✎ | Which questions reach WeChat: `wechat-driven` only chats started from WeChat; `all` every chat once you are away |
+| `idleAwayMinutes` | `5` | ✎ | Minutes of keyboard/mouse idle that count as away |
 | `pythonBin` | `python3` | ↻ | Interpreter for the transport child; the default auto-uses (or first-start creates) the plugin's `.venv` |
 | `autoSetupPython` | `true` | ↻ | First start creates the `.venv` and installs from PyPI when `pythonBin` is default |
 | `pipIndexUrl` | `''` | ↻ | pip mirror for the automatic install (empty = official PyPI) |
 | `accountId` | `dsh` | ↻ | iLink account key for token persistence (restart to apply) |
-| `answerTimeoutMs` | `600000` | ✎ | WeChat answer timeout before falling back to the GUI |
+| `answerTimeoutMs` | `600000` | ✎ | Milliseconds a WeChat question waits before falling back to the page |
 
 ✎ fields are volatile: editable in the 「插件」 form, over WeChat with
 `/config`, or by hand — all applied live without a restart. ↻ fields apply

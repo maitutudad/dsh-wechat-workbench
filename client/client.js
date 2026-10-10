@@ -25,10 +25,18 @@ window.__ModuleLoader__.load({
     const FIELD_ORDER = ['allowWxids', 'bootstrap', 'approvalMode', 'idleAwayMinutes', 'answerTimeoutMs']
     const FIELD_LABELS = {
       allowWxids: '授权白名单（空格分隔；空 = 拒绝所有人）',
-      bootstrap: '引导模式（只回复来信号 id，不执行指令）',
-      approvalMode: "审批通道（'wechat-driven' | 'all'）",
-      idleAwayMinutes: '键鼠空闲多少分钟判定离席',
-      answerTimeoutMs: '微信审批超时（毫秒，超时回退 GUI）',
+      bootstrap: '首次绑定助手',
+      approvalMode: '哪些提问会推到微信',
+      idleAwayMinutes: '离开电脑判定（键鼠空闲分钟数）',
+      answerTimeoutMs: '微信提问等待回复（毫秒，超时转回网页）',
+    }
+    const FIELD_HINTS = {
+      bootstrap: '开启后，用微信给机器人发任意消息，它会回复你的微信 ID；把 ID 填进上方白名单后关闭本项。',
+    }
+    const MODE_LABELS = { 'wechat-driven': '仅微信里发起的会话', 'all': '离开电脑后全部会话' }
+    const MODE_HINTS = {
+      'wechat-driven': '只有从微信发起的会话需要你决定时才推微信；网页里发起的会话，提问留在网页等你看。',
+      'all': '键鼠空闲超过上面的分钟数后，任何会话（含网页发起）的提问都推到微信，手机上回复即可；回到电脑自动恢复网页。',
     }
 
     // No chrome of our own: the plugin page already frames each detail
@@ -94,15 +102,14 @@ window.__ModuleLoader__.load({
           if (typeof value[k] === 'boolean') {
             // The primitive's Switch takes an aria-label only; lay out the
             // visible text beside the toggle ourselves, rows-style.
-            return h('div', {
-              key: k,
-              style: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 },
-            },
-              h('span', { style: { flex: 1 } }, FIELD_LABELS[k] ?? k),
-              h(Switch, {
-                checked: boolValue(k), label: FIELD_LABELS[k] ?? k,
-                onChange: (next) => setDraft({ ...currentDraft, [k]: next }),
-              }))
+            return h('div', { key: k },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 } },
+                h('span', { style: { flex: 1 } }, FIELD_LABELS[k] ?? k),
+                h(Switch, {
+                  checked: boolValue(k), label: FIELD_LABELS[k] ?? k,
+                  onChange: (next) => setDraft({ ...currentDraft, [k]: next }),
+                })),
+              FIELD_HINTS[k] && boolValue(k) === false ? h('div', { style: { fontSize: 12, opacity: .7, marginTop: 2 } }, FIELD_HINTS[k]) : null)
           }
           if (k === 'approvalMode') {
             return h('div', { key: k },
@@ -110,11 +117,12 @@ window.__ModuleLoader__.load({
               h(SegmentedControl, {
                 value: modeValue(),
                 options: [
-                  { value: 'wechat-driven', label: '仅微信驱动' },
-                  { value: 'all', label: '所有会话（离席时）' },
+                  { value: 'wechat-driven', label: MODE_LABELS['wechat-driven'] },
+                  { value: 'all', label: MODE_LABELS['all'] },
                 ],
                 onChange: (v) => setDraft({ ...currentDraft, approvalMode: v }),
-              }))
+              }),
+              h('div', { style: { fontSize: 12, opacity: .7, marginTop: 4 } }, MODE_HINTS[modeValue()] ?? ''))
           }
           return h('label', { key: k, style: labelStyle },
             FIELD_LABELS[k] ?? k,

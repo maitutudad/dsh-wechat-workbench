@@ -59,7 +59,7 @@ cd <插件目录>
 
 ### 首次运行（绑定微信、授权自己）
 
-1. 先开 `bootstrap: true` —— 工作台「插件」表单里改，或手工加：
+1. 先开「首次绑定助手」（`bootstrap: true`）—— 工作台「插件」表单里改，或手工加：
    ```yaml
    - id: wechat-workbench
      config:
@@ -81,14 +81,14 @@ cd <插件目录>
 | 键 | 默认 | 即时 | 说明 |
 |---|---|---|---|
 | `allowWxids` | `[]` | ✎ | 授权名单；**空 = 全部拒绝** |
-| `bootstrap` | `false` | ✎ | 引导模式：只回复来信号 id，不执行任何指令 |
-| `approvalMode` | `wechat-driven` | ✎ | `'all'` = 离席时所有会话的审批推微信 |
-| `idleAwayMinutes` | `5` | ✎ | 键鼠空闲判定离席的分钟数 |
+| `bootstrap` | `false` | ✎ | 首次绑定助手：开启后发任意消息，机器人回复你的微信 ID |
+| `approvalMode` | `wechat-driven` | ✎ | 哪些提问推到微信：`wechat-driven` 仅微信发起的会话；`all` 离开电脑后全部会话 |
+| `idleAwayMinutes` | `5` | ✎ | 离开电脑判定：键鼠空闲超过该分钟数 |
 | `pythonBin` | `python3` | ↻ | 传输子进程解释器；默认值时自动使用（或首次启动创建）插件自带 `.venv` |
 | `autoSetupPython` | `true` | ↻ | 首次启动自动建 `.venv` 并从 PyPI 装依赖 |
 | `pipIndexUrl` | `''` | ↻ | 自动安装用的 pip 镜像（留空 = 官方 PyPI） |
 | `accountId` | `dsh` | ↻ | iLink token 持久化键（重启生效） |
-| `answerTimeoutMs` | `600000` | ✎ | 微信审批超时后回退 GUI |
+| `answerTimeoutMs` | `600000` | ✎ | 微信提问等待回复的毫秒数，超时转回网页 |
 
 ✎ 为 volatile 字段：「插件」表单 / 微信 `/config` / 手工 patch 任一方式改完即时生效，无需重启；↻ 字段重启后生效。
 
