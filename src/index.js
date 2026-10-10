@@ -174,6 +174,12 @@ export function apply(ctx, config) {
     answerer,
     atDeskController,
     channelState: () => `审批通道: ${(live(config.approvalMode) ?? 'wechat-driven') === 'all' ? '所有会话（离席时）' : '仅微信驱动的会话'}；${atDeskController.describe()}`,
+    inbound: {
+      allowed: wxids,
+      bootstrap: () => Boolean(live(config.bootstrap)),
+      allowGroups: () => Boolean(live(config.allowGroups)),
+      setPrimary: (id) => { primaryConversationId = id },
+    },
   })
 
   transport.on('login', ({ qrUrl }) => {
@@ -190,47 +196,10 @@ export function apply(ctx, config) {
     logger.error(`wechat-workbench: 传输错误：${message}`)
   })
 
-  transport.on('message', async (message) => {
-    const { conversationId, senderId, senderName, groupId, isAtBot, text } = message
-    // Guaranteed-visibility receipt marker: distinguishes "message never
-    // arrived" from "arrived but processing failed".
-    process.stderr.write(
-      `[wechat-workbench] 收到微信消息 from=${conversationId} text=${JSON.stringify((text ?? '').slice(0, 50))}\n`,
-    )
-    try {
-      if (live(config.bootstrap) && wxids().length === 0) {
-        logger.warn(
-          `wechat-workbench: [bootstrap] 收到消息 conversation=${conversationId} sender=${senderId} (${senderName})`,
-        )
-        transport.send(conversationId,
-          `🧭 引导模式：你的会话标识是 ${conversationId}${groupId !== null ? `（群内发送者 ${senderId}）` : ''}。`
-          + '把它配置到 wechat-workbench.allowWxids 并关闭 bootstrap 即可启用。')
-        return
-      }
-      // Fail-closed authorization (read live: allowWxids/allowGroups are
-      // volatile and may change through the workbench form at any time).
-      const peerAllowed = conversationId !== null && wxids().includes(conversationId)
-      const groupAllowed = live(config.allowGroups) && groupId !== null
-        && (wxids().includes(senderId) || wxids().includes(senderName))
-      if (!peerAllowed && !groupAllowed) {
-        logger.warn(`wechat-workbench: 拒绝未授权消息 from=${conversationId} sender=${senderId}`)
-        transport.send(conversationId, '⛔ 未授权。')
-        return
-      }
-      if (groupId !== null && !isAtBot) return
-      if (groupId === null) primaryConversationId = conversationId // approval channel
-      const trimmed = (text ?? '').trim()
-      if (!trimmed) return
-
-      // Pending questions take precedence over commands/prompts.
-      if (answerer.answer(conversationId, trimmed)) return
-
-      const reply = await router.handle({ conversationId, text: trimmed, groupId, isAtBot, media: message.media })
-      if (reply) transport.send(conversationId, reply)
-    } catch (error) {
-      logger.error(`wechat-workbench: message handling failed: ${error}`)
-      transport.send(conversationId, `⚠️ 处理失败：${error}`)
-    }
+  transport.on('message', (message) => {
+    // The full op object flows through one tested entry point (Router
+    // .handleInbound); wiring here must not drop fields.
+    void router.handleInbound(message)
   })
 
   ctx.effect(() => {

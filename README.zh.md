@@ -53,7 +53,23 @@ cd <插件目录>
     approvalMode: 'all'                    # 离席时所有会话的审批都推微信
 ```
 
-启动 `dsh --profile web`，终端会出现登录二维码（或链接，用微信打开），扫码绑定；给机器人发任意消息拿到会话 id 填入 `allowWxids`，再把 `bootstrap` 改为 `false`。`patchReload: live` 的 profile 下配置改动保存即热生效。
+### 首次运行（绑定微信、授权自己）
+
+1. 先开 `bootstrap: true` —— 工作台「插件」表单里改，或手工加：
+   ```yaml
+   - id: wechat-workbench
+     config:
+       bootstrap: true
+   ```
+2. 启动（或重启）profile：`dsh --profile web`。终端会打印登录二维码链接 ——
+   用微信扫码（或用微信打开链接）。iLink 令牌持久化在 `~/.wechat-agent-sdk/`，
+   之后重启免扫码自动重连。
+3. 在微信里给机器人发任意消息。引导模式会回复你的会话标识
+   （`wxid_...@im.wechat` 字符串）。
+4. 把它填进 `allowWxids`，并关掉 `bootstrap` —— 「插件」表单里改保存即生效
+   （无需重启），或手工改。至此你是唯一授权用户。
+
+`patchReload: live` 的 profile 下配置改动保存即热生效。
 
 ## 配置项
 

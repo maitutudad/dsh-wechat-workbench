@@ -96,11 +96,54 @@ test('failed media download surfaces an explicit note in the prompt text', async
   assert.ok(!prompt.content.some((p) => p.type === 'image'), 'no image part for a failed download')
 })
 
+test('handleInbound: the production entry forwards media into the session prompt', async () => {
+  const imagePath = writeTempFile('inbound.png', Buffer.from(PNG_BASE64, 'base64'))
+  const fakeCtx = makeCtxWithSession()
+  const { router, transport } = buildMediaHarness(fakeCtx)
+  router.inbound = {
+    allowed: () => ['wxid_me'],
+    bootstrap: () => false,
+    allowGroups: () => false,
+    setPrimary: () => {},
+  }
+  await router.handleInbound({
+    conversationId: 'wxid_me', senderId: 'wxid_me', senderName: 'me',
+    groupId: null, isAtBot: false, text: '[图片]', messageId: 'm1',
+    media: [{ path: imagePath, fileName: 'inbound.png', kind: 'image', mediaType: 'image/png', bytes: 70 }],
+  })
+  const prompt = fakeCtx.prompts.at(-1)
+  assert.ok(prompt, 'prompt submitted through the production entry')
+  const imagePart = prompt.content.find((part) => part.type === 'image')
+  assert.ok(imagePart, 'media descriptor survived the index->router seam')
+  assert.equal(imagePart.data, PNG_BASE64)
+})
+
+test('handleInbound: unauthorized senders are rejected without prompting', async () => {
+  const fakeCtx = makeCtxWithSession()
+  const { router, transport } = buildMediaHarness(fakeCtx)
+  router.inbound = { allowed: () => ['wxid_me'], bootstrap: () => false, allowGroups: () => false, setPrimary: () => {} }
+  await router.handleInbound({ conversationId: 'wxid_stranger', senderId: 'wxid_stranger', groupId: null, isAtBot: false, text: 'hi' })
+  assert.equal(fakeCtx.prompts.length, 0, 'no prompt for unauthorized sender')
+  assert.ok(transport.sent.some((s) => s.t === '⛔ 未授权。'))
+})
+
+test('handleInbound: bootstrap mode replies with the conversation id', async () => {
+  const fakeCtx = makeCtxWithSession()
+  const { router, transport } = buildMediaHarness(fakeCtx)
+  router.inbound = { allowed: () => [], bootstrap: () => true, allowGroups: () => false, setPrimary: () => {} }
+  await router.handleInbound({ conversationId: 'wxid_new', senderId: 'wxid_new', groupId: null, isAtBot: false, text: 'hi' })
+  assert.equal(fakeCtx.prompts.length, 0)
+  const reply = transport.sent.find((s) => s.t.includes('引导模式'))
+  assert.ok(reply, 'bootstrap reply sent')
+  assert.ok(reply.t.includes('wxid_new'), 'reply carries the conversation id')
+})
+
 // ---------------------------------------------------------------- helpers
 function makeCtxWithSession() {
   const prompts = []
   return {
     prompts,
+    logger: { info() {}, warn() {}, error() {} },
     on() { /* no waterfall in this harness */ },
     sessionController: {
       list: async () => ({ items: [{ sessionId: 's1', updatedAt: Date.now(), running: false, blank: false, projections: { kind: 'sequenced', asOfSeq: 1, values: { title: 'T' } } }] }),

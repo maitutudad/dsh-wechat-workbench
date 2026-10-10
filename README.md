@@ -100,10 +100,24 @@ wholesale**:
     approvalMode: 'all'                    # WeChat answers every session's questions when away
 ```
 
-Start `dsh --profile web`, scan the login QR printed to the terminal (or open
-the URL in WeChat), send any message to the bot — it replies with your
-conversation id for the allowlist — then set `bootstrap: false`. Config edits
-hot-apply when the profile has `patchReload: live`.
+### First run (bind WeChat, authorize yourself)
+
+1. Set `bootstrap: true` first — either in the workbench 插件 form or by hand:
+   ```yaml
+   - id: wechat-workbench
+     config:
+       bootstrap: true
+   ```
+2. Start (or restart) the profile: `dsh --profile web`. The terminal prints
+   a login QR link — scan it with WeChat (or open the link in WeChat). The
+   iLink token persists under `~/.wechat-agent-sdk/`; later restarts reconnect
+   without a scan.
+3. Send any message to the bot from WeChat. Bootstrap mode replies with your
+   conversation id (the `wxid_...@im.wechat` string).
+4. Put that id into `allowWxids` and turn `bootstrap` off — in the 插件 form
+   (saves live, no restart) or by hand. You are now the only authorized user.
+
+Config edits hot-apply when the profile has `patchReload: live`.
 
 ## Configuration
 
