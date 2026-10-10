@@ -35,8 +35,8 @@ window.__ModuleLoader__.load({
     // section, so the companion renders content only.
     const box = { padding: '2px 0', margin: '2px 0' }
     const labelStyle = { display: 'block', fontSize: 13, margin: '10px 0 4px' }
-    const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit' }
-    const buttonStyle = { marginTop: 10, padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', cursor: 'pointer' }
+    const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', font: 'inherit', lineHeight: 'inherit' }
+    const buttonStyle = { marginTop: 10, padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', lineHeight: 'inherit' }
 
     /** Subscribe to one settings form; re-renders on every snapshot change. */
     function useConfigForm(ctx, namespace) {
@@ -114,10 +114,12 @@ window.__ModuleLoader__.load({
       return undefined
     }
 
-    /** Bundle-page inline form: self-fed from the settings namespace. */
+    /** Bundle-page panel: connection status/QR above the live config form. */
     function BundleConfigView(props) {
       const form = useConfigForm(this.ctx, 'wechat-workbench')
-      return h(ConfigFields, { ...props, form, headline: '微信工作台配置（保存即热生效）' })
+      return h('div', null,
+        h(StatusLine, null),
+        h(ConfigFields, { ...props, form, headline: '微信工作台配置（保存即热生效）' }))
     }
 
     /** Row 「配置」 page: the plugin manager passes the form as props. */
@@ -128,8 +130,8 @@ window.__ModuleLoader__.load({
 
     const STATE_TEXT = { connecting: '连接中…', login: '等待扫码登录', ready: '已连接', error: '错误' }
 
-    function DetailSection(props) {
-      const pkgName = props.subject?.pkg?.name ?? props.subject?.pkg
+    /** Connection status / login QR, polled from the Host status route. */
+    function StatusLine(props) {
       const [status, setStatus] = useState(null)
       useEffect(() => {
         const poll = async () => {
@@ -144,8 +146,7 @@ window.__ModuleLoader__.load({
         const timer = setInterval(() => { void poll() }, 3000)
         return () => { clearInterval(timer) }
       }, [])
-      if (pkgName !== 'dsh-wechat-workbench') return null
-      return h('div', { style: box, 'data-wechat-status': status?.state ?? 'unknown' },
+      return h('div', { 'data-wechat-status': status?.state ?? 'unknown' },
         h('div', { style: { fontSize: 13, fontWeight: 600 } },
           `微信通道：${STATE_TEXT[status?.state] ?? status?.state ?? '…'}`),
         status?.state === 'login'
@@ -184,10 +185,6 @@ window.__ModuleLoader__.load({
           { name: 'plugins.row.config', key: 'dsh-wechat-workbench#wechat-workbench' },
           rowView,
         ), 'wechat-workbench client: row config'))
-        ctx.effect(() => ctx.slots.inject('plugins.detail.section', () => ctx.slots.register(
-          { name: 'plugins.detail.section', id: 'wechat-workbench-status' },
-          DetailSection,
-        ), 'wechat-workbench client: detail section'))
       },
     }
     return module.exports
