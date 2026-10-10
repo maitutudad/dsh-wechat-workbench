@@ -34,9 +34,9 @@ window.__ModuleLoader__.load({
     // No chrome of our own: the plugin page already frames each detail
     // section, so the companion renders content only.
     const box = { padding: '2px 0', margin: '2px 0' }
-    const labelStyle = { display: 'block', fontSize: 12, opacity: .85 }
+    const labelStyle = { display: 'block', fontSize: 12, opacity: .85, marginBottom: 6 }
     const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', font: 'inherit', lineHeight: 'inherit' }
-    const buttonStyle = { marginTop: 10, padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', lineHeight: 'inherit' }
+    const buttonStyle = { padding: '3px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', lineHeight: 'inherit' }
 
     /** Subscribe to one settings form; re-renders on every snapshot change. */
     function useConfigForm(ctx, namespace) {
@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
           setNote(`保存失败：${String(error?.message ?? error)}`)
         }
       }
-      return h('div', { 'data-wechat-config': 'form', style: { display: 'grid', gap: 12, marginTop: 10 } },
+      return h('div', { 'data-wechat-config': 'form', style: { display: 'grid', gap: 10, marginTop: 8 } },
         headline ? h('div', { style: { fontSize: 13, fontWeight: 600 } }, headline) : null,
         ...keys.map((k) => {
           if (typeof value[k] === 'boolean') {
@@ -114,7 +114,7 @@ window.__ModuleLoader__.load({
               h('select', {
                 value: modeValue(),
                 onChange: (e) => setMode(e.target.value),
-                style: { ...inputStyle, marginTop: 4 },
+                style: inputStyle,
               },
                 h('option', { value: 'wechat-driven' }, '仅微信驱动的会话'),
                 h('option', { value: 'all' }, '所有会话（离席时推微信）')))
@@ -125,7 +125,7 @@ window.__ModuleLoader__.load({
               type: typeof value[k] === 'number' ? 'number' : 'text',
               value: textValue(k),
               onChange: (e) => setText(k, e.target.value),
-              style: { ...inputStyle, marginTop: 4 },
+              style: inputStyle,
             }))
         }),
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
@@ -163,9 +163,20 @@ window.__ModuleLoader__.load({
       return h(ConfigFields, { view: props.view, form: asForm(props.form) ?? selfForm })
     }
 
-    /** Connection status / login QR, polled from the Host status route. */
+    /** Connection status / login QR plus reconnect controls. */
     function StatusLine(props) {
       const [status, setStatus] = useState(null)
+      const [busy, setBusy] = useState(false)
+      const act = async (action) => {
+        setBusy(true)
+        try {
+          await fetch('/api/wechat-workbench/status', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action }),
+          })
+        } catch { /* the next poll reports the outcome */ }
+        setBusy(false)
+      }
       useEffect(() => {
         const poll = async () => {
           try {
@@ -195,10 +206,17 @@ window.__ModuleLoader__.load({
         status?.state === 'error' && status.message
           ? h('div', { style: { fontSize: 12, marginTop: 6, opacity: .8 } }, String(status.message))
           : null,
-        status?.state === 'ready'
-          ? h('div', { style: { fontSize: 12, marginTop: 6, opacity: .8 } },
-            `白名单 ${status.allowWxids?.length ?? 0} 人 · 审批：${status.approvalMode === 'all' ? '所有会话（离席时）' : '仅微信驱动会话'} · ${status.atDesk ? '当前在电脑前' : '当前离席'}`)
-          : null)
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' } },
+          status?.state === 'ready'
+            ? h('span', { style: { fontSize: 12, opacity: .8 } },
+              `白名单 ${status.allowWxids?.length ?? 0} 人 · 审批：${status.approvalMode === 'all' ? '所有会话（离席时）' : '仅微信驱动会话'} · ${status.atDesk ? '当前在电脑前' : '当前离席'}`)
+            : null,
+          status?.state === 'ready' || status?.state === 'error'
+            ? h('button', { type: 'button', style: buttonStyle, disabled: busy, onClick: () => { void act('reconnect') } }, '重新连接')
+            : null,
+          status?.state === 'ready'
+            ? h('button', { type: 'button', style: buttonStyle, disabled: busy, onClick: () => { void act('logout') } }, '退出并重新扫码')
+            : null))
     }
 
     module.exports = {

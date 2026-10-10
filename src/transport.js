@@ -136,6 +136,14 @@ export class WeChatTransportChild {
     return this.write({ op: 'sendMedia', ...op })
   }
 
+  /** Kill and immediately restart the child (manual reconnect; resets backoff). */
+  restart() {
+    this.kill()
+    this.stopping = false
+    this.restartDelayMs = 2_000
+    this.spawnOnce()
+  }
+
   kill() {
     this.stopping = true
     const child = this.child

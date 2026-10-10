@@ -223,6 +223,19 @@ async def _reader_loop(stop: asyncio.Event) -> None:
                     msg.get("fileName", ""),
                 )
             )
+        elif op == "logout":
+            # Clear the stored iLink token, then exit; the parent restarts the
+            # child and the next start needs a fresh QR scan.
+            async def _logout_and_exit():
+                transport = _state["transport"]
+                try:
+                    if transport is not None:
+                        await transport.logout()
+                except Exception:
+                    logger.exception("logout failed")
+                _emit({"op": "logged-out"})
+                stop.set()
+            asyncio.create_task(_logout_and_exit())
         elif op in ("start", "stop"):
             if op == "start":
                 if msg.get("mediaDir"):

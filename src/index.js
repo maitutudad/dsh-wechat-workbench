@@ -138,19 +138,42 @@ export function apply(ctx, config) {
 
   // Authenticated same-origin status endpoint for the client companion's
   // detail panel (the connection carrier applies browser auth before fetch).
+  const statusBody = () => JSON.stringify({
+    state: loginState.state,
+    qrUrl: loginState.qrUrl,
+    qrPng: loginState.qrPng,
+    message: loginState.message,
+    allowWxids: wxids(),
+    approvalMode: live(config.approvalMode) ?? 'wechat-driven',
+    atDesk: atDeskController.current(),
+  })
+  const json = (body, status = 200) => new Response(body, { status, headers: { 'content-type': 'application/json' } })
   ctx.effect(() => ctx.connection.fetch.register({
     path: '/api/wechat-workbench/status',
-    methods: ['GET'],
+    methods: ['GET', 'POST'],
     requestBody: 'buffered',
-    fetch: async () => new Response(JSON.stringify({
-      state: loginState.state,
-      qrUrl: loginState.qrUrl,
-      qrPng: loginState.qrPng,
-      message: loginState.message,
-      allowWxids: wxids(),
-      approvalMode: live(config.approvalMode) ?? 'wechat-driven',
-      atDesk: atDeskController.current(),
-    }), { headers: { 'content-type': 'application/json' } }),
+    fetch: async (request) => {
+      if (request.method === 'GET') return json(statusBody())
+      let action = ''
+      try {
+        action = String((await request.json()).action ?? '')
+      } catch { /* empty body: refuse below */ }
+      if (action === 'reconnect') {
+        loginState.state = 'connecting'
+        loginState.message = null
+        transport.restart()
+        return json(statusBody())
+      }
+      if (action === 'logout') {
+        // The child clears the stored token and exits; the automatic restart
+        // then requires a fresh QR scan.
+        loginState.state = 'connecting'
+        loginState.message = '已清除令牌，等待重新扫码'
+        transport.write({ op: 'logout' })
+        return json(statusBody())
+      }
+      return json(JSON.stringify({ error: 'unknown action' }), 400)
+    },
   }), 'wechat-workbench: status route')
 
   // Automatic at-desk detection: keyboard/mouse idle beyond the threshold
