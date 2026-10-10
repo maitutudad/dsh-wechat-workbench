@@ -138,6 +138,33 @@ test('handleInbound: bootstrap mode replies with the conversation id', async () 
   assert.ok(reply.t.includes('wxid_new'), 'reply carries the conversation id')
 })
 
+test('/config: reads current values and writes one volatile field through the settings service', async () => {
+  const fakeCtx = makeCtxWithSession()
+  const { router, transport } = buildMediaHarness(fakeCtx)
+  const written = []
+  const current = { allowWxids: ['wxid_me'], allowGroups: false, bootstrap: false, approvalMode: 'wechat-driven', idleAwayMinutes: 5, answerTimeoutMs: 600_000 }
+  router.configWriter = {
+    read: () => current,
+    update: async (patch) => { written.push(patch); Object.assign(current, patch) },
+  }
+  const list = await router.handle({ conversationId: 'wxid_me', text: '/config' })
+  assert.match(list, /allowWxids: \["wxid_me"\]/)
+  assert.match(list, /approvalMode: "wechat-driven"/)
+
+  const add = await router.handle({ conversationId: 'wxid_me', text: '/config allowWxids +wxid_friend' })
+  assert.match(add, /✅/)
+  assert.deepEqual(written[0], { allowWxids: ['wxid_me', 'wxid_friend'] })
+
+  const mode = await router.handle({ conversationId: 'wxid_me', text: '/config approvalMode all' })
+  assert.deepEqual(written[1], { approvalMode: 'all' })
+
+  const minutes = await router.handle({ conversationId: 'wxid_me', text: '/config idleAwayMinutes 10' })
+  assert.deepEqual(written[2], { idleAwayMinutes: 10 })
+
+  const bad = await router.handle({ conversationId: 'wxid_me', text: '/config nope 1' })
+  assert.match(bad, /未知配置键/)
+})
+
 // ---------------------------------------------------------------- helpers
 function makeCtxWithSession() {
   const prompts = []

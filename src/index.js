@@ -166,6 +166,10 @@ export function apply(ctx, config) {
     getPrimary: () => primaryConversationId,
   })
 
+  // Host settings service (same layer the workbench would write): /config
+  // edits persist to the profile patch and hot-apply through volatile fields.
+  const settings = ctx.get('settings')
+
   const router = new Router({
     ctx,
     pointers,
@@ -179,6 +183,17 @@ export function apply(ctx, config) {
       bootstrap: () => Boolean(live(config.bootstrap)),
       allowGroups: () => Boolean(live(config.allowGroups)),
       setPrimary: (id) => { primaryConversationId = id },
+    },
+    configWriter: settings === undefined ? undefined : {
+      read: () => ({
+        allowWxids: wxids(),
+        allowGroups: Boolean(live(config.allowGroups)),
+        bootstrap: Boolean(live(config.bootstrap)),
+        approvalMode: live(config.approvalMode) ?? 'wechat-driven',
+        idleAwayMinutes: live(config.idleAwayMinutes) ?? 5,
+        answerTimeoutMs: live(config.answerTimeoutMs) ?? 600_000,
+      }),
+      update: (patch) => settings.update('wechat-workbench', patch),
     },
   })
 

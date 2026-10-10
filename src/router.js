@@ -19,6 +19,7 @@ const HELP = [
   '  /new [标题] — 在当前工作区新建会话',
   '  /tail [n] — 查看当前会话最近 n 条记录',
   '  /info — 当前指针与运行状态',
+  '  /config — 查看/修改本插件配置（保存即热生效）',
   '  直接发文字 = 向当前会话发送消息（与 GUI 同一条时间线）',
 ].join('\n')
 
@@ -40,7 +41,7 @@ export class Router {
    * @param {import('./transport.js').WeChatTransportChild} args.transport
    * @param {(sessionId: string) => void} args.noteSession - track WeChat-driven sessions
    */
-  constructor({ ctx, pointers, transport, noteSession, answerer, atDeskController, channelState, inbound }) {
+  constructor({ ctx, pointers, transport, noteSession, answerer, atDeskController, channelState, inbound, configWriter }) {
     this.ctx = ctx
     this.pointers = pointers
     this.transport = transport
@@ -50,7 +51,9 @@ export class Router {
     /** Optional live approval-channel description for /info. */
     this.channelState = channelState
     /** Live inbound gating: whitelist/bootstrap/allowGroups accessors and the approval-channel setter. */
-    this.inbound = inbound ?? null
+    this.inbound = inbound
+    /** Optional live config reader/writer for /config (host settings service). */
+    this.configWriter = configWriter ?? null
     /** @type {Map<string, SessionFollower>} sessionId -> follower */
     this.followers = new Map()
     /** @type {Map<string, Set<string>>} sessionId -> conversation ids */
@@ -150,6 +153,8 @@ export class Router {
         return this.tail(message.conversationId, command.arg)
       case '/info':
         return this.info(message.conversationId)
+      case '/config':
+        return this.configCommand(message.conversationId, command.arg)
       case '/atdesk': {
         const ctl = this.atDeskController
         if (!ctl) return '审批通道不可用。'
@@ -348,6 +353,23 @@ export class Router {
     return lines.length ? `📜 最近记录：\n${lines.slice(-limit).join('\n')}` : '（没有可显示的文本记录）'
   }
 
+  /** Live-editable config (/config): read, or write one volatile field through the settings service. */
+  async configCommand(conversationId, arg) {
+    const writer = this.configWriter
+    if (writer === undefined) return '⚠️ 本部署未挂载 settings 服务，无法在线改配置；请编辑 profile 的 cordis.patch.yml。'
+    const current = writer.read()
+    if (!arg.trim()) {
+      const lines = CONFIG_KEYS.map((key) => `  ${key}: ${JSON.stringify(current[key])}`).join('\n')
+      return `⚙️ 当前配置：\n${lines}\n/config <键> <值> 修改（保存即热生效）；数组项可用 +wxid / -wxid 增删。`
+    }
+    const [key, ...tokens] = arg.trim().split(/\s+/)
+    if (!CONFIG_KEYS.includes(key)) return `未知配置键 ${key}。可用：${CONFIG_KEYS.join('、')}。`
+    const value = configValueFromTokens(current[key], tokens)
+    if (value === undefined) return `无法解析值：${tokens.join(' ')}。数组用空格分隔；布尔用 true/false；数字直接写。`
+    await writer.update({ [key]: value })
+    return `✅ ${key} = ${JSON.stringify(value)}（已写入 profile，热生效）`
+  }
+
   async info(conversationId) {
     const pointer = this.pointers.get(conversationId)
     const busy = pointer.sessionId && this.busy.has(conversationId) ? '\n⏳ 上一条消息仍在处理中' : ''
@@ -473,6 +495,30 @@ function buildContentParts(text, media) {
   return parts
 }
 
+
+const CONFIG_KEYS = ['allowWxids', 'allowGroups', 'bootstrap', 'approvalMode', 'idleAwayMinutes', 'answerTimeoutMs']
+
+/** Parse /config tokens against the field's current value: arrays support +/-/replace, scalars by literal. */
+function configValueFromTokens(current, tokens) {
+  if (tokens.length === 0) return undefined
+  if (Array.isArray(current)) {
+    const [first, ...rest] = tokens
+    if (first.startsWith('+')) {
+      const add = [first.slice(1), ...rest.map((t) => t.replace(/^\+/, ''))].filter(Boolean)
+      return [...new Set([...current, ...add])]
+    }
+    if (first.startsWith('-')) {
+      const remove = new Set([first.slice(1), ...rest.map((t) => t.replace(/^-/, ''))].filter(Boolean))
+      return current.filter((v) => !remove.has(v))
+    }
+    return tokens
+  }
+  const raw = tokens.join(' ')
+  if (raw === 'true' || raw === 'false') return raw === 'true'
+  const num = Number(raw)
+  if (raw !== '' && Number.isFinite(num)) return num
+  return raw
+}
 
 function sessionTitle(summary) {
   // The list projection carries titles at projections.values.title (a plain

@@ -36,8 +36,12 @@ npm name `dsh-wechat-remote` was taken by an unrelated package.
   (`projections.values.title`); `/info` also names the workspace and reports
   the approval-channel state.
 - Volatile config fields (`allowWxids`, `allowGroups`, `bootstrap`,
-  `approvalMode`, `idleAwayMinutes`, `answerTimeoutMs`) edit live through the
-  workbench 插件 config form; `pythonBin`/`accountId` apply on restart.
+  `approvalMode`, `idleAwayMinutes`, `answerTimeoutMs`) edit live over
+  WeChat through the new `/config` command (list, set, `+item`/`-item`
+  array edits), which writes the profile patch through the Host settings
+  service; `pythonBin`/`accountId` apply on restart. A Web plugin-manager
+  config form would need a client-side companion registering the
+  `plugins.row.config` slot — documented as not shipped.
 - Media download failures surface as an explicit `[媒体接收失败]` note in
   the session prompt, with a `/c2c/download` retry variant against
   `wechat-agent-sdk` 0.2.1's CDN `400`s.
