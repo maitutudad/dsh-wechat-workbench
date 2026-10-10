@@ -225,7 +225,7 @@ export function apply(ctx, config) {
       // Pending questions take precedence over commands/prompts.
       if (answerer.answer(conversationId, trimmed)) return
 
-      const reply = await router.handle({ conversationId, text: trimmed, groupId, isAtBot })
+      const reply = await router.handle({ conversationId, text: trimmed, groupId, isAtBot, media: message.media })
       if (reply) transport.send(conversationId, reply)
     } catch (error) {
       logger.error(`wechat-workbench: message handling failed: ${error}`)
