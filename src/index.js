@@ -37,7 +37,7 @@ const schema = Schema.object({
   allowWxids: Schema.array(Schema.string())
     .default([])
     .volatile()
-    .description('允许操控本机的微信 wxid 白名单；空 = 拒绝所有人（fail-closed）'),
+    .description('允许使用的微信 ID 列表，空格分隔；只有名单里的微信能操作机器人，空 = 全部拒绝'),
   bootstrap: Schema.boolean()
     .default(false)
     .volatile()

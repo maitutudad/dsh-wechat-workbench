@@ -24,13 +24,14 @@ window.__ModuleLoader__.load({
 
     const FIELD_ORDER = ['allowWxids', 'bootstrap', 'approvalMode', 'idleAwayMinutes', 'answerTimeoutMs']
     const FIELD_LABELS = {
-      allowWxids: '授权白名单（空格分隔；空 = 拒绝所有人）',
+      allowWxids: '允许使用的微信（空格分隔）',
       bootstrap: '首次绑定助手',
       approvalMode: '哪些提问会推到微信',
       idleAwayMinutes: '离开电脑判定（键鼠空闲分钟数）',
       answerTimeoutMs: '微信提问等待回复（毫秒，超时转回网页）',
     }
     const FIELD_HINTS = {
+      allowWxids: '只有名单里的微信能操作机器人，其他人发消息一律被拒绝。不知道自己的微信 ID？开启下方的「首次绑定助手」，用微信给机器人发条消息就会收到。',
       bootstrap: '开启后，用微信给机器人发任意消息，它会回复你的微信 ID；把 ID 填进上方白名单后关闭本项。',
     }
     const MODE_LABELS = { 'wechat-driven': '仅微信里发起的会话', 'all': '离开电脑后全部会话' }
@@ -124,14 +125,16 @@ window.__ModuleLoader__.load({
               }),
               h('div', { style: { fontSize: 12, opacity: .7, marginTop: 4 } }, MODE_HINTS[modeValue()] ?? ''))
           }
-          return h('label', { key: k, style: labelStyle },
-            FIELD_LABELS[k] ?? k,
-            h(Input, {
-              type: typeof value[k] === 'number' ? 'number' : 'text',
-              value: textValue(k),
-              onChange: (e) => setDraft({ ...currentDraft, [k]: e.target.value }),
-              style: { width: '100%' },
-            }))
+          return h('div', { key: k },
+            h('label', { style: labelStyle },
+              FIELD_LABELS[k] ?? k,
+              h(Input, {
+                type: typeof value[k] === 'number' ? 'number' : 'text',
+                value: textValue(k),
+                onChange: (e) => setDraft({ ...currentDraft, [k]: e.target.value }),
+                style: { width: '100%' },
+              })),
+            FIELD_HINTS[k] ? h('div', { style: { fontSize: 12, opacity: .7, marginTop: 4 } }, FIELD_HINTS[k]) : null)
         }),
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           h(Button, { variant: 'outline', size: 'sm', onClick: () => { void save() } }, '保存'),

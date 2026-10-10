@@ -135,7 +135,7 @@ Config edits hot-apply when the profile has `patchReload: live`.
 
 | Key | Default | Live | Meaning |
 |---|---|---|---|
-| `allowWxids` | `[]` | ✎ | Authorized WeChat ids; **empty denies everyone** |
+| `allowWxids` | `[]` | ✎ | Which WeChat accounts may use the bot (space-separated ids); **empty denies everyone**; get your id with the first-run helper |
 | `bootstrap` | `false` | ✎ | First-run helper: the bot replies with your WeChat id instead of executing anything |
 | `approvalMode` | `wechat-driven` | ✎ | Which questions reach WeChat: `wechat-driven` only chats started from WeChat; `all` every chat once you are away |
 | `idleAwayMinutes` | `5` | ✎ | Minutes of keyboard/mouse idle that count as away |
