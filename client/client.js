@@ -3,15 +3,15 @@
  *
  * Closure-factory artifact: registers itself with the page's module loader
  * (`window.__ModuleLoader__.load`) and resolves externals (React) through the
- * injected module table. Contributes two slots to the Web workbench:
+ * injected module table. Contributes to the Web workbench's 「插件」 panel:
  *
- *  - `plugins.row.config` keyed `dsh-wechat-workbench#wechat-workbench`:
- *    the row's configuration form (values and writes arrive as `props.form`
- *    from the plugin manager page; edits land in the same profile patch the
- *    Host applies live).
- *  - `plugins.detail.section` for this bundle's detail page: login QR and
- *    connection status, polled from the authenticated
- *    `/api/wechat-workbench/status` route the Host plugin registers.
+ *  - `plugins.bundle.config` keyed `dsh-wechat-workbench`: the configuration
+ *    form rendered inline on the bundle's detail page (self-fed from the
+ *    shared settings namespace through the `configForms` service).
+ *  - `plugins.row.config` keyed `dsh-wechat-workbench#wechat-workbench`: the
+ *    same form behind the row's 「配置」 control (values arrive as props).
+ *  - `plugins.detail.section`: WeChat login QR and connection status, polled
+ *    from the authenticated `/api/wechat-workbench/status` route.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-wechat-workbench',
@@ -36,16 +36,18 @@ window.__ModuleLoader__.load({
     const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,.5)', background: 'transparent', color: 'inherit' }
     const buttonStyle = { marginTop: 12, padding: '6px 14px', borderRadius: 6, border: '1px solid rgba(128,128,128,.5)', background: 'transparent', color: 'inherit', cursor: 'pointer' }
 
-    function parseDraft(current, raw) {
-      if (Array.isArray(current)) return raw.trim() === '' ? [] : raw.trim().split(/\s+/)
-      if (typeof current === 'boolean') return raw === 'true'
-      if (typeof current === 'number') { const n = Number(raw); return Number.isFinite(n) ? n : raw }
-      return raw
+    /** Subscribe to one settings form; re-renders on every snapshot change. */
+    function useConfigForm(ctx, namespace) {
+      const form = ctx.configForms?.get(namespace)
+      const [, force] = useState(0)
+      useEffect(() => form?.subscribe(() => force(n => n + 1)) ?? undefined, [form])
+      return form
     }
 
-    function RowConfigView(props) {
-      const form = props.form
-      const state = form?.state
+    /** The editable field list over one ConfigForm; saves changed fields with form.set. */
+    function ConfigFields(props) {
+      const { form, headline } = props
+      const state = form?.getSnapshot()
       const value = state?.value
       const [draft, setDraft] = useState(null)
       const [note, setNote] = useState(null)
@@ -53,34 +55,42 @@ window.__ModuleLoader__.load({
         return h('span', null, value == null ? '微信工作台配置' : `${FIELD_ORDER.length} 个可热更新字段`)
       }
       if (form === undefined || value === undefined) {
-        return h('div', { style: box }, state?.status === 'loading' ? '正在读取配置…' : '配置暂不可用（打开一次「设置」页后重试）')
+        return h('div', { style: box }, state?.status === 'loading' ? '正在读取配置…' : '配置暂不可用')
       }
       const keys = FIELD_ORDER.filter((k) => Object.hasOwn(value, k))
       const currentDraft = draft ?? {}
       const fieldDraft = (k) => (Object.hasOwn(currentDraft, k) ? currentDraft[k]
         : Array.isArray(value[k]) ? value[k].join(' ') : String(value[k]))
+      const parse = (k, raw) => {
+        if (Array.isArray(value[k])) return raw.trim() === '' ? [] : raw.trim().split(/\s+/)
+        if (typeof value[k] === 'boolean') return raw === 'true'
+        if (typeof value[k] === 'number') { const n = Number(raw); return Number.isFinite(n) ? n : raw }
+        return raw
+      }
       const save = async () => {
-        const ops = []
-        for (const k of keys) {
-          const parsed = parseDraft(value[k], fieldDraft(k))
-          if (JSON.stringify(parsed) !== JSON.stringify(value[k])) ops.push({ op: 'set', path: [k], value: parsed })
-        }
-        if (ops.length === 0) { setNote('没有改动'); return }
+        let changed = 0
         try {
-          await form.mutate(ops, state.revision)
+          for (const k of keys) {
+            const parsed = parse(k, fieldDraft(k))
+            if (JSON.stringify(parsed) !== JSON.stringify(value[k])) {
+              const ok = await form.set(k, parsed)
+              if (!ok) throw new Error('主机拒绝了写入')
+              changed += 1
+            }
+          }
           setDraft(null)
-          setNote(`已保存 ${ops.length} 项（热生效）`)
+          setNote(changed === 0 ? '没有改动' : `已保存 ${changed} 项（热生效）`)
         } catch (error) {
           setNote(`保存失败：${String(error?.message ?? error)}`)
         }
       }
       return h('div', { style: box, 'data-wechat-config': 'form' },
+        headline ? h('div', { style: { fontSize: 13, fontWeight: 600, marginBottom: 4 } }, headline) : null,
         keys.map((k) => h('label', { key: k, style: labelStyle },
           FIELD_LABELS[k] ?? k,
           h('input', {
             style: inputStyle,
             value: fieldDraft(k),
-            checked: undefined,
             onChange: (e) => setDraft({ ...currentDraft, [k]: e.target.value }),
           }))),
         h('div', null,
@@ -89,12 +99,36 @@ window.__ModuleLoader__.load({
           note ? h('span', { style: { marginLeft: 10, fontSize: 13 } }, note) : null))
     }
 
+    /** Normalize the two form shapes: a live ConfigForm, or the page's { state, mutate }. */
+    function asForm(f) {
+      if (f === undefined || f === null) return undefined
+      if (typeof f.getSnapshot === 'function') return f
+      if (f.state !== undefined) {
+        return {
+          getSnapshot: () => f.state,
+          set: (field, value) => f.mutate([{ op: 'set', path: [field], value }], f.state.revision),
+        }
+      }
+      return undefined
+    }
+
+    /** Bundle-page inline form: self-fed from the settings namespace. */
+    function BundleConfigView(props) {
+      const form = useConfigForm(this.ctx, 'wechat-workbench')
+      return h(ConfigFields, { ...props, form, headline: '微信工作台配置（保存即热生效）' })
+    }
+
+    /** Row 「配置」 page: the plugin manager passes the form as props. */
+    function RowConfigView(props) {
+      const selfForm = useConfigForm(this.ctx, 'wechat-workbench')
+      return h(ConfigFields, { view: props.view, form: asForm(props.form) ?? selfForm })
+    }
+
     const STATE_TEXT = { connecting: '连接中…', login: '等待扫码登录', ready: '已连接', error: '错误' }
 
     function DetailSection(props) {
       const pkgName = props.subject?.pkg?.name ?? props.subject?.pkg
       const [status, setStatus] = useState(null)
-      const alive = useRef(true)
       useEffect(() => {
         const poll = async () => {
           try {
@@ -106,7 +140,7 @@ window.__ModuleLoader__.load({
         }
         void poll()
         const timer = setInterval(() => { void poll() }, 3000)
-        return () => { alive.current = false; clearInterval(timer) }
+        return () => { clearInterval(timer) }
       }, [])
       if (pkgName !== 'dsh-wechat-workbench') return null
       return h('div', { style: box, 'data-wechat-status': status?.state ?? 'unknown' },
@@ -133,14 +167,20 @@ window.__ModuleLoader__.load({
 
     module.exports = {
       name: 'dsh-wechat-workbench-ui',
-      inject: ['slots'],
+      inject: ['slots', 'configForms'],
       apply(ctx) {
-        // Warm the shared settings mirror so the plugin page's form gate
-        // (namespace presence) holds even before any settings page opens.
-        ctx.get('configForms')?.describe?.().ensure?.()?.catch?.(() => {})
+        // Warm the shared settings mirror so form gates hold before any
+        // settings page has been opened.
+        ctx.configForms.describe().ensure?.()?.catch?.(() => {})
+        const bundleView = BundleConfigView.bind({ ctx })
+        const rowView = RowConfigView.bind({ ctx })
+        ctx.effect(() => ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register(
+          { name: 'plugins.bundle.config', key: 'dsh-wechat-workbench' },
+          bundleView,
+        ), 'wechat-workbench client: bundle config'))
         ctx.effect(() => ctx.slots.inject('plugins.row.config', () => ctx.slots.register(
           { name: 'plugins.row.config', key: 'dsh-wechat-workbench#wechat-workbench' },
-          RowConfigView,
+          rowView,
         ), 'wechat-workbench client: row config'))
         ctx.effect(() => ctx.slots.inject('plugins.detail.section', () => ctx.slots.register(
           { name: 'plugins.detail.section', id: 'wechat-workbench-status' },

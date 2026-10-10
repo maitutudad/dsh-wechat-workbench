@@ -58,8 +58,14 @@ Design promises:
 ## Requirements
 
 - Node.js ≥ 20, a DSH checkout or install with the `web` composition
-- Python ≥ 3.11 with [`wechat-agent-sdk`](https://pypi.org/project/wechat-agent-sdk/)
-  (community SDK, MIT — this plugin contains no iLink protocol code)
+- Python ≥ 3.11 — on first start the plugin automatically creates a local
+  `.venv` and installs [`wechat-agent-sdk`](https://pypi.org/project/wechat-agent-sdk/)
+  (the community iLink transport, MIT — this plugin contains no iLink protocol
+  code, and the SDK exists only on PyPI, so one online setup step is
+  unavoidable). Set `pipIndexUrl` to a mirror (for example Tsinghua's) if the
+  official index is slow where you are; afterwards the plugin runs fully
+  offline. Or point `pythonBin` at an interpreter that already has the
+  dependencies.
 - A WeChat account enrolled in the agent/iLink gray release (real-name
   verification required), on a machine that can reach `ilinkai.weixin.qq.com`
 
@@ -134,7 +140,9 @@ Config edits hot-apply when the profile has `patchReload: live`.
 | `bootstrap` | `false` | ✎ | Reply with the sender's id instead of executing anything |
 | `approvalMode` | `wechat-driven` | ✎ | `'all'` routes every session's questions to WeChat when away |
 | `idleAwayMinutes` | `5` | ✎ | Keyboard/mouse idle that counts as away |
-| `pythonBin` | `python3` | ↻ | Interpreter for the transport child (restart to apply) |
+| `pythonBin` | `python3` | ↻ | Interpreter for the transport child; the default auto-uses (or first-start creates) the plugin's `.venv` |
+| `autoSetupPython` | `true` | ↻ | First start creates the `.venv` and installs from PyPI when `pythonBin` is default |
+| `pipIndexUrl` | `''` | ↻ | pip mirror for the automatic install (empty = official PyPI) |
 | `accountId` | `dsh` | ↻ | iLink account key for token persistence (restart to apply) |
 | `answerTimeoutMs` | `600000` | ✎ | WeChat answer timeout before falling back to the GUI |
 

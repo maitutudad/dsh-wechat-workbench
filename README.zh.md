@@ -37,7 +37,9 @@ dsh plugin --profile web add github:<you>/dsh-wechat-workbench   # 从 GitHub
 dsh plugin --profile web add dsh-wechat-workbench                 # 从 npm（发布后）
 ```
 
-准备 Python 环境（iLink 传输子进程依赖）：
+Python 环境：`pythonBin` 保持默认时**无需任何手工步骤** —— 首次启动会自动创建
+`.venv` 并从 PyPI 安装 `wechat-agent-sdk` + `qrcode`（官方源慢可配 `pipIndexUrl` 镜像，
+如清华源；装好后完全离线）。也可手工预装：
 
 ```sh
 cd <插件目录>
@@ -83,7 +85,9 @@ cd <插件目录>
 | `bootstrap` | `false` | ✎ | 引导模式：只回复来信号 id，不执行任何指令 |
 | `approvalMode` | `wechat-driven` | ✎ | `'all'` = 离席时所有会话的审批推微信 |
 | `idleAwayMinutes` | `5` | ✎ | 键鼠空闲判定离席的分钟数 |
-| `pythonBin` | `python3` | ↻ | 传输子进程解释器（重启生效） |
+| `pythonBin` | `python3` | ↻ | 传输子进程解释器；默认值时自动使用（或首次启动创建）插件自带 `.venv` |
+| `autoSetupPython` | `true` | ↻ | 首次启动自动建 `.venv` 并从 PyPI 装依赖 |
+| `pipIndexUrl` | `''` | ↻ | 自动安装用的 pip 镜像（留空 = 官方 PyPI） |
 | `accountId` | `dsh` | ↻ | iLink token 持久化键（重启生效） |
 | `answerTimeoutMs` | `600000` | ✎ | 微信审批超时后回退 GUI |
 

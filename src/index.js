@@ -25,6 +25,7 @@ import { WeChatAnswerer } from './answerer.js'
 import { WeChatTransportChild } from './transport.js'
 import { AtDeskMonitor } from './atdesk.js'
 import { registerNotifyTool } from './notify-tool.js'
+import { resolvePythonBin } from './python-setup.js'
 
 export const name = 'dsh-wechat-workbench'
 
@@ -55,7 +56,13 @@ const schema = Schema.object({
     .description('自动判定：键鼠空闲超过该分钟数 = 不在电脑，审批自动转微信（approvalMode=all 时生效）'),
   pythonBin: Schema.string()
     .default('python3')
-    .description('运行 iLink 传输子进程的 Python 解释器（改动需重启生效）'),
+    .description('运行 iLink 传输子进程的 Python 解释器；默认 python3 时自动使用/创建插件自带的 .venv（改动需重启生效）'),
+  autoSetupPython: Schema.boolean()
+    .default(true)
+    .description('pythonBin 为默认值且 .venv 不存在时，首次启动自动创建虚拟环境并从 PyPI 安装依赖（改动需重启生效）'),
+  pipIndexUrl: Schema.string()
+    .default('')
+    .description('自动安装 Python 依赖时使用的 pip 镜像（如 https://pypi.tuna.tsinghua.edu.cn/simple；留空用官方 PyPI；改动需重启生效）'),
   accountId: Schema.string()
     .default('dsh')
     .description('wechat-agent-sdk 的 iLink 账号 id（token 持久化键；改动需重启生效）'),
@@ -115,7 +122,11 @@ export function apply(ctx, config) {
   const pointers = new PointerStore(path.join(storeDir, 'pointers.json'))
 
   const transport = new WeChatTransportChild(ctx, {
-    pythonBin: config.pythonBin,
+    pythonBin: resolvePythonBin({
+      pythonBin: config.pythonBin,
+      autoSetupPython: config.autoSetupPython,
+      pipIndexUrl: config.pipIndexUrl,
+    }, (m) => logger.warn(m)),
     accountId: config.accountId,
   })
 
