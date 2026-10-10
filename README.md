@@ -83,7 +83,7 @@ connection status. The same fields are also editable over WeChat with
 CLI equivalents (no build step — the plugin is plain ESM JavaScript):
 
 ```sh
-dsh plugin --profile web add github:<you>/dsh-wechat-workbench   # from git
+dsh plugin --profile web add github:maitutudad/dsh-wechat-workbench   # from git
 dsh plugin --profile web add dsh-wechat-workbench                # from npm once published
 ```
 

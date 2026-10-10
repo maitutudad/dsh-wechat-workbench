@@ -40,12 +40,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/taber/dsh-wechat-workbench.git"
+    "url": "git+https://github.com/maitutudad/dsh-wechat-workbench.git"
   },
   "bugs": {
-    "url": "https://github.com/taber/dsh-wechat-workbench/issues"
+    "url": "https://github.com/maitutudad/dsh-wechat-workbench/issues"
   },
-  "homepage": "https://github.com/taber/dsh-wechat-workbench#readme",
+  "homepage": "https://github.com/maitutudad/dsh-wechat-workbench#readme",
   "engines": {
     "node": ">=20"
   },

@@ -33,7 +33,7 @@
 等价的 CLI（纯 ESM JS，无需构建）：
 
 ```sh
-dsh plugin --profile web add github:<you>/dsh-wechat-workbench   # 从 GitHub
+dsh plugin --profile web add github:maitutudad/dsh-wechat-workbench   # 从 GitHub
 dsh plugin --profile web add dsh-wechat-workbench                 # 从 npm（发布后）
 ```
 
