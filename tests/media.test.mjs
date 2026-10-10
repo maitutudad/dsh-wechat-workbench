@@ -127,6 +127,15 @@ test('handleInbound: unauthorized senders are rejected without prompting', async
   assert.ok(transport.sent.some((s) => s.t === '⛔ 未授权。'))
 })
 
+test('handleInbound: group messages are ignored entirely', async () => {
+  const fakeCtx = makeCtxWithSession()
+  const { router, transport } = buildMediaHarness(fakeCtx)
+  router.inbound = { allowed: () => ['wxid_me'], bootstrap: () => false, setPrimary: () => {} }
+  await router.handleInbound({ conversationId: 'group-123', senderId: 'wxid_me', groupId: 'group-123', isAtBot: true, text: 'hi' })
+  assert.equal(fakeCtx.prompts.length, 0, 'no prompt from a group')
+  assert.equal(transport.sent.length, 0, 'no reply from a group')
+})
+
 test('handleInbound: bootstrap mode replies with the conversation id', async () => {
   const fakeCtx = makeCtxWithSession()
   const { router, transport } = buildMediaHarness(fakeCtx)

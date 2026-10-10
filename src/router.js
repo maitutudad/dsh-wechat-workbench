@@ -50,7 +50,7 @@ export class Router {
     this.atDeskController = atDeskController
     /** Optional live approval-channel description for /info. */
     this.channelState = channelState
-    /** Live inbound gating: whitelist/bootstrap/allowGroups accessors and the approval-channel setter. */
+    /** Live inbound gating: whitelist/bootstrap accessors and the approval-channel setter. */
     this.inbound = inbound
     /** Optional live config reader/writer for /config (host settings service). */
     this.configWriter = configWriter ?? null
@@ -74,7 +74,7 @@ export class Router {
    * @param {{conversationId: string, senderId?: string | null, senderName?: string | null, groupId?: string | null, isAtBot?: boolean, text?: string, media?: Array<object>}} message
    */
   async handleInbound(message) {
-    const { conversationId, senderId, senderName, groupId, isAtBot, text } = message
+    const { conversationId, senderId, senderName, groupId, text } = message
     // Guaranteed-visibility receipt marker: distinguishes "message never
     // arrived" from "arrived but processing failed".
     process.stderr.write(
@@ -87,29 +87,29 @@ export class Router {
           `wechat-workbench: [bootstrap] 收到消息 conversation=${conversationId} sender=${senderId} (${senderName})`,
         )
         this.transport.send(conversationId,
-          `🧭 引导模式：你的会话标识是 ${conversationId}${groupId != null ? `（群内发送者 ${senderId}）` : ''}。`
+          `🧭 引导模式：你的会话标识是 ${conversationId}。`
           + '把它配置到 wechat-workbench.allowWxids 并关闭 bootstrap 即可启用。')
         return
       }
-      // Fail-closed authorization (read live: allowWxids/allowGroups are
-      // volatile and may change through the workbench form at any time).
+      // Fail-closed authorization (read live: allowWxids is volatile and
+      // may change through the workbench form at any time).
+      // Group chats are out of scope: this plugin serves one bound 1:1
+      // conversation; anything arriving from a group is dropped.
+      if (groupId != null) return
       const peerAllowed = conversationId !== null && allowed.includes(conversationId)
-      const groupAllowed = (this.inbound?.allowGroups() ?? false) && groupId != null
-        && (allowed.includes(senderId) || allowed.includes(senderName))
-      if (!peerAllowed && !groupAllowed) {
+      if (!peerAllowed) {
         this.ctx.logger.warn(`wechat-workbench: 拒绝未授权消息 from=${conversationId} sender=${senderId}`)
         this.transport.send(conversationId, '⛔ 未授权。')
         return
       }
-      if (groupId != null && !isAtBot) return
-      if (groupId == null) this.inbound?.setPrimary?.(conversationId) // approval channel
+      this.inbound?.setPrimary?.(conversationId) // approval channel
       const trimmed = (text ?? '').trim()
       if (!trimmed) return
 
       // Pending questions take precedence over commands/prompts.
       if (this.answerer?.answer(conversationId, trimmed)) return
 
-      const reply = await this.handle({ conversationId, text: trimmed, groupId, isAtBot, media: message.media })
+      const reply = await this.handle({ conversationId, text: trimmed, media: message.media })
       if (reply) this.transport.send(conversationId, reply)
     } catch (error) {
       this.ctx.logger.error(`wechat-workbench: message handling failed: ${error}`)
@@ -121,7 +121,7 @@ export class Router {
   // Command dispatch (already-authorized messages).
   // ------------------------------------------------------------------
   /**
-   * @param {{conversationId: string, text: string, groupId: string | null, isAtBot: boolean}} message
+   * @param {{conversationId: string, text: string, media?: Array<object>}} message
    */
   async handle(message) {
     const command = parseCommand(message.text)
@@ -496,7 +496,7 @@ function buildContentParts(text, media) {
 }
 
 
-const CONFIG_KEYS = ['allowWxids', 'allowGroups', 'bootstrap', 'approvalMode', 'idleAwayMinutes', 'answerTimeoutMs']
+const CONFIG_KEYS = ['allowWxids', 'bootstrap', 'approvalMode', 'idleAwayMinutes', 'answerTimeoutMs']
 
 /** Parse /config tokens against the field's current value: arrays support +/-/replace, scalars by literal. */
 function configValueFromTokens(current, tokens) {

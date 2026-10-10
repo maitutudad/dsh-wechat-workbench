@@ -81,7 +81,6 @@ cd <插件目录>
 | 键 | 默认 | 即时 | 说明 |
 |---|---|---|---|
 | `allowWxids` | `[]` | ✎ | 授权名单；**空 = 全部拒绝** |
-| `allowGroups` | `false` | ✎ | 群聊响应（白名单发送者需 @机器人） |
 | `bootstrap` | `false` | ✎ | 引导模式：只回复来信号 id，不执行任何指令 |
 | `approvalMode` | `wechat-driven` | ✎ | `'all'` = 离席时所有会话的审批推微信 |
 | `idleAwayMinutes` | `5` | ✎ | 键鼠空闲判定离席的分钟数 |

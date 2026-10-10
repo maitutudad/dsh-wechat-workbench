@@ -38,10 +38,6 @@ const schema = Schema.object({
     .default([])
     .volatile()
     .description('允许操控本机的微信 wxid 白名单；空 = 拒绝所有人（fail-closed）'),
-  allowGroups: Schema.boolean()
-    .default(false)
-    .volatile()
-    .description('群聊支持：白名单成员在微信群里 @机器人 时响应；只用 1v1 私聊则保持关闭'),
   bootstrap: Schema.boolean()
     .default(false)
     .volatile()
@@ -236,13 +232,11 @@ export function apply(ctx, config) {
     inbound: {
       allowed: wxids,
       bootstrap: () => Boolean(live(config.bootstrap)),
-      allowGroups: () => Boolean(live(config.allowGroups)),
       setPrimary: (id) => { primaryConversationId = id },
     },
     configWriter: settings === undefined ? undefined : {
       read: () => ({
         allowWxids: wxids(),
-        allowGroups: Boolean(live(config.allowGroups)),
         bootstrap: Boolean(live(config.bootstrap)),
         approvalMode: live(config.approvalMode) ?? 'wechat-driven',
         idleAwayMinutes: live(config.idleAwayMinutes) ?? 5,

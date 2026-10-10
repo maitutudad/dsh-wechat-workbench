@@ -22,10 +22,9 @@ window.__ModuleLoader__.load({
     const { useEffect, useRef, useState } = React
     const h = React.createElement
 
-    const FIELD_ORDER = ['allowWxids', 'allowGroups', 'bootstrap', 'approvalMode', 'idleAwayMinutes', 'answerTimeoutMs']
+    const FIELD_ORDER = ['allowWxids', 'bootstrap', 'approvalMode', 'idleAwayMinutes', 'answerTimeoutMs']
     const FIELD_LABELS = {
       allowWxids: '授权白名单（空格分隔；空 = 拒绝所有人）',
-      allowGroups: '群聊支持（白名单成员在群里 @机器人 时响应；只用私聊保持关闭）',
       bootstrap: '引导模式（只回复来信号 id，不执行指令）',
       approvalMode: "审批通道（'wechat-driven' | 'all'）",
       idleAwayMinutes: '键鼠空闲多少分钟判定离席',
@@ -93,10 +92,17 @@ window.__ModuleLoader__.load({
         headline ? h('div', { style: { fontSize: 13, fontWeight: 600 } }, headline) : null,
         ...keys.map((k) => {
           if (typeof value[k] === 'boolean') {
-            return h(Switch, {
-              key: k, checked: boolValue(k), label: FIELD_LABELS[k] ?? k,
-              onChange: (next) => setDraft({ ...currentDraft, [k]: next }),
-            })
+            // The primitive's Switch takes an aria-label only; lay out the
+            // visible text beside the toggle ourselves, rows-style.
+            return h('div', {
+              key: k,
+              style: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 },
+            },
+              h('span', { style: { flex: 1 } }, FIELD_LABELS[k] ?? k),
+              h(Switch, {
+                checked: boolValue(k), label: FIELD_LABELS[k] ?? k,
+                onChange: (next) => setDraft({ ...currentDraft, [k]: next }),
+              }))
           }
           if (k === 'approvalMode') {
             return h('div', { key: k },

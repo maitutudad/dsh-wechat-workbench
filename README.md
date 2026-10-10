@@ -136,7 +136,6 @@ Config edits hot-apply when the profile has `patchReload: live`.
 | Key | Default | Live | Meaning |
 |---|---|---|---|
 | `allowWxids` | `[]` | ✎ | Authorized WeChat ids; **empty denies everyone** |
-| `allowGroups` | `false` | ✎ | Respond in group chats (whitelisted sender must @-mention) |
 | `bootstrap` | `false` | ✎ | Reply with the sender's id instead of executing anything |
 | `approvalMode` | `wechat-driven` | ✎ | `'all'` routes every session's questions to WeChat when away |
 | `idleAwayMinutes` | `5` | ✎ | Keyboard/mouse idle that counts as away |
@@ -153,7 +152,9 @@ on the next start.
 ## Security model
 
 - **Fail-closed authorization**: empty allowlist = the plugin logs and ignores
-  everything; unauthorized senders get a single rejection line.
+  everything; unauthorized senders get a single rejection line. Group chats
+  are out of scope — the plugin serves one bound 1:1 conversation and drops
+  anything arriving from a group.
 - Approval questions are claimed from WeChat only for sessions WeChat drives
   (or, in `'all'` mode, when the at-desk detector reports away); everything
   else falls through to the GUI answerer via `next()`.

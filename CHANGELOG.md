@@ -27,15 +27,15 @@ npm name `dsh-wechat-remote` was taken by an unrelated package.
   files/voice/video are saved and referenced by path in the prompt text.
 - **`wechat_send_file` tool**: any session's agent can push a local file to
   the notification conversation; extension decides image/video/file rendering.
-- Fail-closed authorization (`allowWxids`), group-chat gating with @-mention,
-  bootstrap mode that reveals the caller's conversation id.
+- Fail-closed authorization (`allowWxids`) and bootstrap mode that reveals
+  the caller's conversation id; group chats are out of scope (dropped).
 - Follower degrades to `sessionQuery` polling when the live follow stream
   throws; assistant text extraction follows the canonical
   `data.message.content` block shape.
 - `/ss` and `/info` show session titles from the list projection
   (`projections.values.title`); `/info` also names the workspace and reports
   the approval-channel state.
-- Volatile config fields (`allowWxids`, `allowGroups`, `bootstrap`,
+- Volatile config fields (`allowWxids`, `bootstrap`,
   `approvalMode`, `idleAwayMinutes`, `answerTimeoutMs`) edit live over
   WeChat through the new `/config` command (list, set, `+item`/`-item`
   array edits), which writes the profile patch through the Host settings
