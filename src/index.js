@@ -79,7 +79,7 @@ export function readLiveField(field) {
   return field !== null && typeof field === 'object' && typeof field.get === 'function' ? field.get() : field
 }
 
-export const inject = ['sessionController', 'workspaceController', 'userQuestions', 'sessionQuery', 'tools']
+export const inject = ['sessionController', 'workspaceController', 'userQuestions', 'sessionQuery', 'tools', 'connection']
 
 /** Sessions currently driven from WeChat (for the answerer's claim rule). */
 const wechatDrivenSessions = new Set()
@@ -121,6 +121,26 @@ export function apply(ctx, config) {
 
   /** The approval channel: last authorized DM conversation that messaged us. */
   let primaryConversationId = null
+
+  /** Login/connection state for the Web detail panel's status route. */
+  const loginState = { state: 'connecting', qrUrl: null, qrPng: null, message: null }
+
+  // Authenticated same-origin status endpoint for the client companion's
+  // detail panel (the connection carrier applies browser auth before fetch).
+  ctx.effect(() => ctx.connection.fetch.register({
+    path: '/api/wechat-workbench/status',
+    methods: ['GET'],
+    requestBody: 'buffered',
+    fetch: async () => new Response(JSON.stringify({
+      state: loginState.state,
+      qrUrl: loginState.qrUrl,
+      qrPng: loginState.qrPng,
+      message: loginState.message,
+      allowWxids: wxids(),
+      approvalMode: live(config.approvalMode) ?? 'wechat-driven',
+      atDesk: atDeskController.current(),
+    }), { headers: { 'content-type': 'application/json' } }),
+  }), 'wechat-workbench: status route')
 
   // Automatic at-desk detection: keyboard/mouse idle beyond the threshold
   // means the user is away and approvals route to WeChat. A manual override
@@ -197,7 +217,10 @@ export function apply(ctx, config) {
     },
   })
 
-  transport.on('login', ({ qrUrl }) => {
+  transport.on('login', ({ qrUrl, qrPng }) => {
+    loginState.state = 'login'
+    loginState.qrUrl = qrUrl ?? null
+    loginState.qrPng = qrPng ?? null
     logger.warn(`wechat-workbench: 请用微信扫码登录 iLink：${qrUrl}`)
     // Direct write: guaranteed visible even if the host filters logger output.
     process.stderr.write(
@@ -205,9 +228,15 @@ export function apply(ctx, config) {
     )
   })
   transport.on('ready', () => {
+    loginState.state = 'ready'
+    loginState.qrUrl = null
+    loginState.qrPng = null
+    loginState.message = null
     logger.info('wechat-workbench: iLink 长连接已建立，微信工作台就绪')
   })
   transport.on('error', ({ message }) => {
+    loginState.state = 'error'
+    loginState.message = message ?? null
     logger.error(`wechat-workbench: 传输错误：${message}`)
   })
 

@@ -51,6 +51,22 @@ def _emit(payload: dict) -> None:
     sys.stdout.flush()
 
 
+def _qr_png_b64(url: str) -> str:
+    """Render the login QR as a base64 PNG for the Web detail panel."""
+    try:
+        import base64
+        import io
+
+        import qrcode
+
+        img = qrcode.make(url)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+
+
 def _render_qr(url: str) -> None:
     """Print a scannable ASCII QR to stderr (no [qr] extra required)."""
     try:
@@ -129,6 +145,19 @@ async def _download_bytes(transport, media) -> bytes:
         return await _cdn_variant_download(media)
 
 
+def _sniff_image_mime(data: bytes) -> str:
+    """Map magic bytes to one of the attachment path's accepted image types."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "application/octet-stream"
+
+
 async def _download_and_save(message_id: str, index: int, media) -> dict | None:
     transport = _state["transport"]
     media_dir = _state.get("media_dir")
@@ -143,11 +172,26 @@ async def _download_and_save(message_id: str, index: int, media) -> dict | None:
     data = await _download_bytes(transport, media)
     with open(path, "wb") as fh:
         fh.write(data)
+    kind = _media_kind(media.type)
+    media_type = _guess_mime(safe_name)
+    file_name = safe_name
+    if kind == "image":
+        # WeChat image payloads often carry no extension; the attachment
+        # path rejects non-image media types, so sniff the actual bytes.
+        sniffed = _sniff_image_mime(data)
+        if sniffed != "application/octet-stream":
+            media_type = sniffed
+            stem, _, ext = safe_name.rpartition(".")
+            if not ext or ext.lower() not in ("png", "jpg", "jpeg", "gif", "webp"):
+                file_name = f"{stem or 'image'}.{sniffed.rsplit('/', 1)[-1]}"
+        elif media_type not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
+            # Unknown bytes advertised as an image: keep them as a file part.
+            kind = "file"
     return {
         "path": path,
-        "fileName": safe_name,
-        "kind": _media_kind(media.type),
-        "mediaType": _guess_mime(safe_name),
+        "fileName": file_name,
+        "kind": kind,
+        "mediaType": media_type,
         "bytes": len(data),
     }
 
@@ -253,7 +297,7 @@ async def main() -> None:
     if transport.needs_login:
         session = await transport.request_login()
         if session.qr_url:
-            _emit({"op": "login", "qrUrl": session.qr_url})
+            _emit({"op": "login", "qrUrl": session.qr_url, "qrPng": _qr_png_b64(session.qr_url)})
             _render_qr(session.qr_url)
             while True:
                 result = await transport.check_login(session)
@@ -265,7 +309,7 @@ async def main() -> None:
                     session = await transport.request_login()
                     if not session.qr_url:
                         break  # a stored token appeared; skip scanning
-                    _emit({"op": "login", "qrUrl": session.qr_url})
+                    _emit({"op": "login", "qrUrl": session.qr_url, "qrPng": _qr_png_b64(session.qr_url)})
                     _render_qr(session.qr_url)
                 elif result.status == LoginStatus.ERROR:
                     logger.warning("login poll error: %s", result.error)

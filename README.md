@@ -67,11 +67,12 @@ Design promises:
 
 Recent DSH builds ship a plugin manager in the Web workbench (the 「插件」
 panel): install by absolute local path (development), git URL, or npm name,
-and enable or disable plugins there. This plugin's configuration is not
-editable through that panel yet — a config form requires a client-side
-companion registering into the `plugins.row.config` slot, which third-party
-plugins do not ship here — so configure it over WeChat with `/config`
-(live, no restart) or by editing the profile patch below.
+and enable or disable plugins there. This plugin ships a small browser
+companion (`client/client.js`, loaded through the package's `dsh.client`
+declaration), so its bundle page in that panel gains a 「配置」control with
+a live-editable form, and the detail page shows the WeChat login QR and
+connection status. The same fields are also editable over WeChat with
+`/config`; both write the same profile patch.
 
 CLI equivalents (no build step — the plugin is plain ESM JavaScript):
 
@@ -110,16 +111,17 @@ wholesale**:
      config:
        bootstrap: true
    ```
-2. Start (or restart) the profile: `dsh --profile web`. The terminal prints
-   a login QR link — scan it with WeChat (or open the link in WeChat). The
-   iLink token persists under `~/.wechat-agent-sdk/`; later restarts reconnect
-   without a scan.
+2. Start (or restart) the profile: `dsh --profile web`. The plugin's detail
+   page in the 「插件」 panel shows the login QR (the terminal prints it too);
+   scan it with WeChat (or open the link in WeChat). The iLink token
+   persists under `~/.wechat-agent-sdk/`; later restarts reconnect without
+   a scan.
 3. Send any message to the bot from WeChat. Bootstrap mode replies with your
    conversation id (the `wxid_...@im.wechat` string).
-4. Reply right in WeChat: `/config allowWxids <conversation-id-from-step-3>`
-   then `/config bootstrap false`. Both save live (no restart) into the same
-   profile patch a manual edit would write. You are now the only authorized
-   user.
+4. Put that id into `allowWxids` and turn `bootstrap` off — in the 「插件」
+   form, over WeChat with `/config allowWxids <id>` +
+   `/config bootstrap false`, or by hand. All three write the same patch and
+   apply live. You are now the only authorized user.
 
 Config edits hot-apply when the profile has `patchReload: live`.
 
@@ -136,8 +138,9 @@ Config edits hot-apply when the profile has `patchReload: live`.
 | `accountId` | `dsh` | ↻ | iLink account key for token persistence (restart to apply) |
 | `answerTimeoutMs` | `600000` | ✎ | WeChat answer timeout before falling back to the GUI |
 
-✎ fields are volatile: editable live over WeChat with `/config` (or by
-hand), applied without a restart. ↻ fields apply on the next start.
+✎ fields are volatile: editable in the 「插件」 form, over WeChat with
+`/config`, or by hand — all applied live without a restart. ↻ fields apply
+on the next start.
 
 ## Security model
 

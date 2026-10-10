@@ -25,9 +25,10 @@
 ## 安装
 
 较新版本的 DSH 在 Web 工作台内置插件管理页（「插件」面板）：支持按本地绝对路径
-（开发）、git 地址或 npm 包名安装与启停。本插件的配置暂不能在该面板编辑——
-配置表单需要客户端伴侣包向 `plugins.row.config` 插槽注册，第三方插件默认不带——
-请用微信内的 `/config` 命令改（保存即热生效），或手工编辑下面的 profile patch。
+（开发）、git 地址或 npm 包名安装与启停。本插件自带一个轻量浏览器伴侣包
+（`client/client.js`，经 package.json 的 `dsh.client` 声明装载），因此：插件详情页
+会出现「配置」按钮（表单保存即热生效），并显示微信登录二维码与连接状态。
+微信内 `/config` 命令同样可改；两者写同一层 profile patch。
 
 等价的 CLI（纯 ESM JS，无需构建）：
 
@@ -62,14 +63,14 @@ cd <插件目录>
      config:
        bootstrap: true
    ```
-2. 启动（或重启）profile：`dsh --profile web`。终端会打印登录二维码链接 ——
-   用微信扫码（或用微信打开链接）。iLink 令牌持久化在 `~/.wechat-agent-sdk/`，
-   之后重启免扫码自动重连。
+2. 启动（或重启）profile：`dsh --profile web`。「插件」面板的本插件详情页会显示
+   登录二维码（终端也会打印）；用微信扫码（或用微信打开链接）。iLink 令牌持久化在
+   `~/.wechat-agent-sdk/`，之后重启免扫码自动重连。
 3. 在微信里给机器人发任意消息。引导模式会回复你的会话标识
    （`wxid_...@im.wechat` 字符串）。
-4. 直接在微信里回复：`/config allowWxids <第 3 步拿到的会话标识>`，再
-   `/config bootstrap false`。两条都保存即热生效（写入与手工编辑同一层
-   profile patch）。至此你是唯一授权用户。
+4. 把它填进 `allowWxids`，并关掉 `bootstrap` —— 「插件」表单里改，或微信内
+   `/config allowWxids <标识>` + `/config bootstrap false`，或手工改。三种方式写同一层
+   patch、保存即热生效。至此你是唯一授权用户。
 
 `patchReload: live` 的 profile 下配置改动保存即热生效。
 
@@ -86,7 +87,7 @@ cd <插件目录>
 | `accountId` | `dsh` | ↻ | iLink token 持久化键（重启生效） |
 | `answerTimeoutMs` | `600000` | ✎ | 微信审批超时后回退 GUI |
 
-✎ 为 volatile 字段：微信内 `/config`（或手工 patch）改完即时生效，无需重启；↻ 字段重启后生效。
+✎ 为 volatile 字段：「插件」表单 / 微信 `/config` / 手工 patch 任一方式改完即时生效，无需重启；↻ 字段重启后生效。
 
 ## 安全模型
 

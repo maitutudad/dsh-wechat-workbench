@@ -4,8 +4,14 @@
   "description": "WeChat remote workbench for DeepSeek Harness: browse workspaces, continue sessions, and approve agent questions over the iLink Bot long connection",
   "type": "module",
   "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./client/client.js",
+    "./package.json": "./package.json"
+  },
   "files": [
     "src",
+    "client",
     "python",
     "scripts",
     "tests",
@@ -46,6 +52,9 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "peerDependencies": {

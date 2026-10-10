@@ -44,4 +44,9 @@ npm name `dsh-wechat-remote` was taken by an unrelated package.
   `plugins.row.config` slot — documented as not shipped.
 - Media download failures surface as an explicit `[媒体接收失败]` note in
   the session prompt, with a `/c2c/download` retry variant against
-  `wechat-agent-sdk` 0.2.1's CDN `400`s.
+  `wechat-agent-sdk` 0.2.1's CDN `400`s; inbound images sniff their magic
+  bytes so extension-less WeChat payloads map to an accepted image type.
+- Browser companion (`client/client.js`, declared by `dsh.client`): the
+  「插件」 bundle page gains a 「配置」 form over the live settings namespace,
+  and the detail page shows the WeChat login QR and connection status from
+  the authenticated `/api/wechat-workbench/status` route.
