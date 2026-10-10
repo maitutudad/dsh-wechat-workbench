@@ -31,10 +31,12 @@ window.__ModuleLoader__.load({
       answerTimeoutMs: '微信审批超时（毫秒，超时回退 GUI）',
     }
 
-    const box = { border: '1px solid rgba(128,128,128,.35)', borderRadius: 8, padding: '12px 14px', margin: '8px 0' }
+    // No chrome of our own: the plugin page already frames each detail
+    // section, so the companion renders content only.
+    const box = { padding: '2px 0', margin: '2px 0' }
     const labelStyle = { display: 'block', fontSize: 13, margin: '10px 0 4px' }
-    const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,.5)', background: 'transparent', color: 'inherit' }
-    const buttonStyle = { marginTop: 12, padding: '6px 14px', borderRadius: 6, border: '1px solid rgba(128,128,128,.5)', background: 'transparent', color: 'inherit', cursor: 'pointer' }
+    const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit' }
+    const buttonStyle = { marginTop: 10, padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', cursor: 'pointer' }
 
     /** Subscribe to one settings form; re-renders on every snapshot change. */
     function useConfigForm(ctx, namespace) {
