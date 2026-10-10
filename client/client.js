@@ -34,13 +34,13 @@ window.__ModuleLoader__.load({
     // No chrome of our own: the plugin page already frames each detail
     // section, so the companion renders content only.
     const box = { padding: '2px 0', margin: '2px 0' }
-    const labelStyle = { display: 'block', fontSize: 13, margin: '10px 0 4px' }
+    const labelStyle = { display: 'block', fontSize: 12, opacity: .85 }
     const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', font: 'inherit', lineHeight: 'inherit' }
     const buttonStyle = { marginTop: 10, padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', lineHeight: 'inherit' }
 
     /** Subscribe to one settings form; re-renders on every snapshot change. */
     function useConfigForm(ctx, namespace) {
-      const form = ctx.configForms?.get(namespace)
+      const form = ctx.get?.('configForms')?.get(namespace)
       const [, force] = useState(0)
       useEffect(() => form?.subscribe(() => force(n => n + 1)) ?? undefined, [form])
       return form
@@ -57,23 +57,32 @@ window.__ModuleLoader__.load({
         return h('span', null, value == null ? '微信工作台配置' : `${FIELD_ORDER.length} 个可热更新字段`)
       }
       if (form === undefined || value === undefined) {
-        return h('div', { style: box }, state?.status === 'loading' ? '正在读取配置…' : '配置暂不可用')
+        return h('div', { style: { opacity: .7 } }, state?.status === 'loading' ? '正在读取配置…' : '配置暂不可用')
       }
       const keys = FIELD_ORDER.filter((k) => Object.hasOwn(value, k))
       const currentDraft = draft ?? {}
-      const fieldDraft = (k) => (Object.hasOwn(currentDraft, k) ? currentDraft[k]
+      const hasDraft = (k) => Object.hasOwn(currentDraft, k)
+      const boolValue = (k) => (hasDraft(k) ? currentDraft[k] : Boolean(value[k]))
+      const textValue = (k) => (hasDraft(k) ? currentDraft[k]
         : Array.isArray(value[k]) ? value[k].join(' ') : String(value[k]))
+      const modeValue = () => (hasDraft('approvalMode') ? currentDraft.approvalMode : value.approvalMode)
       const parse = (k, raw) => {
         if (Array.isArray(value[k])) return raw.trim() === '' ? [] : raw.trim().split(/\s+/)
-        if (typeof value[k] === 'boolean') return raw === 'true'
         if (typeof value[k] === 'number') { const n = Number(raw); return Number.isFinite(n) ? n : raw }
         return raw
       }
+      const setBool = (k, v) => setDraft({ ...currentDraft, [k]: v })
+      const setText = (k, v) => setDraft({ ...currentDraft, [k]: v })
+      const setMode = (v) => setDraft({ ...currentDraft, approvalMode: v })
+      const effective = (k) => (hasDraft(k) ? currentDraft[k] : value[k])
       const save = async () => {
         let changed = 0
         try {
           for (const k of keys) {
-            const parsed = parse(k, fieldDraft(k))
+            let parsed
+            if (typeof value[k] === 'boolean') parsed = boolValue(k)
+            else if (k === 'approvalMode') parsed = modeValue()
+            else parsed = parse(k, textValue(k))
             if (JSON.stringify(parsed) !== JSON.stringify(value[k])) {
               const ok = await form.set(k, parsed)
               if (!ok) throw new Error('主机拒绝了写入')
@@ -86,20 +95,46 @@ window.__ModuleLoader__.load({
           setNote(`保存失败：${String(error?.message ?? error)}`)
         }
       }
-      return h('div', { style: box, 'data-wechat-config': 'form' },
-        headline ? h('div', { style: { fontSize: 13, fontWeight: 600, marginBottom: 4 } }, headline) : null,
-        keys.map((k) => h('label', { key: k, style: labelStyle },
-          FIELD_LABELS[k] ?? k,
-          h('input', {
-            style: inputStyle,
-            value: fieldDraft(k),
-            onChange: (e) => setDraft({ ...currentDraft, [k]: e.target.value }),
-          }))),
-        h('div', null,
-          h('button', { type: 'button', style: buttonStyle, onClick: () => { void save() } }, '保存'),
-          h('button', { type: 'button', style: { ...buttonStyle, marginLeft: 8 }, onClick: () => { setDraft(null); setNote('已还原') } }, '还原'),
-          note ? h('span', { style: { marginLeft: 10, fontSize: 13 } }, note) : null))
+      return h('div', { 'data-wechat-config': 'form', style: { display: 'grid', gap: 12, marginTop: 10 } },
+        headline ? h('div', { style: { fontSize: 13, fontWeight: 600 } }, headline) : null,
+        ...keys.map((k) => {
+          if (typeof value[k] === 'boolean') {
+            return h('label', { key: k, style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: boolValue(k),
+                onChange: (e) => setBool(k, e.target.checked),
+                style: { accentColor: 'inherit', margin: 0 },
+              }),
+              FIELD_LABELS[k] ?? k)
+          }
+          if (k === 'approvalMode') {
+            return h('label', { key: k, style: labelStyle },
+              FIELD_LABELS[k] ?? k,
+              h('select', {
+                value: modeValue(),
+                onChange: (e) => setMode(e.target.value),
+                style: { ...inputStyle, marginTop: 4 },
+              },
+                h('option', { value: 'wechat-driven' }, '仅微信驱动的会话'),
+                h('option', { value: 'all' }, '所有会话（离席时推微信）')))
+          }
+          return h('label', { key: k, style: labelStyle },
+            FIELD_LABELS[k] ?? k,
+            h('input', {
+              type: typeof value[k] === 'number' ? 'number' : 'text',
+              value: textValue(k),
+              onChange: (e) => setText(k, e.target.value),
+              style: { ...inputStyle, marginTop: 4 },
+            }))
+        }),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          h('button', { type: 'button', style: { ...buttonStyle, marginTop: 0 }, onClick: () => { void save() } }, '保存'),
+          h('button', { type: 'button', style: { ...buttonStyle, marginTop: 0 }, onClick: () => { setDraft(null); setNote('已还原') } }, '还原'),
+          note ? h('span', { style: { fontSize: 13, opacity: .8 } }, note) : null))
     }
+
+    const STATE_TEXT = { connecting: '连接中…', login: '等待扫码登录', ready: '已连接', error: '错误' }
 
     /** Normalize the two form shapes: a live ConfigForm, or the page's { state, mutate }. */
     function asForm(f) {
@@ -127,8 +162,6 @@ window.__ModuleLoader__.load({
       const selfForm = useConfigForm(this.ctx, 'wechat-workbench')
       return h(ConfigFields, { view: props.view, form: asForm(props.form) ?? selfForm })
     }
-
-    const STATE_TEXT = { connecting: '连接中…', login: '等待扫码登录', ready: '已连接', error: '错误' }
 
     /** Connection status / login QR, polled from the Host status route. */
     function StatusLine(props) {
@@ -170,11 +203,12 @@ window.__ModuleLoader__.load({
 
     module.exports = {
       name: 'dsh-wechat-workbench-ui',
-      inject: ['slots', 'configForms'],
+      inject: ['slots'],
       apply(ctx) {
         // Warm the shared settings mirror so form gates hold before any
         // settings page has been opened.
-        ctx.configForms.describe().ensure?.()?.catch?.(() => {})
+        const configForms = ctx.get?.('configForms')
+        configForms?.describe?.().ensure?.()?.catch?.(() => {})
         const bundleView = BundleConfigView.bind({ ctx })
         const rowView = RowConfigView.bind({ ctx })
         ctx.effect(() => ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register(
