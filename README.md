@@ -15,8 +15,6 @@ WeChat ⇄ python/transport.py (iLink long connection, wechat-agent-sdk)
             └─ atdesk monitor            keyboard/mouse idle → auto channel switch
 ```
 
-![Plugin panel in the DSH Web workbench: WeChat status, login QR, and the live config form](docs/panel.png)
-
 ## What it does
 
 | WeChat command | Action |

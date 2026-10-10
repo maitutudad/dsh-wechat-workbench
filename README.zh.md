@@ -6,8 +6,6 @@
 
 架构与能力总览见[英文 README](README.md#what-it-does)。
 
-![DSH Web 工作台中的插件面板：微信通道状态、登录二维码与实时生效的配置表单](docs/panel.png)
-
 ## 微信命令
 
 | 命令 | 作用 |
