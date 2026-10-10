@@ -302,6 +302,23 @@ async def _message_loop(transport: WeChatTransport, stop: asyncio.Event) -> None
 
 async def main() -> None:
     stop = asyncio.Event()
+
+    # Parent-death watchdog: a host that exits without sending `stop` (failed
+    # startup, kill -9) must not leave this child polling forever. Reparenting
+    # to launchd/init (ppid -> 1) means the parent is gone.
+    import os
+
+    parent_pid = os.getppid()
+
+    async def _watch_parent() -> None:
+        while not stop.is_set():
+            await asyncio.sleep(2)
+            if os.getppid() != parent_pid:
+                logger.warning("parent process gone; exiting")
+                stop.set()
+                os._exit(0)
+
+    asyncio.create_task(_watch_parent())
     account_id = "dsh"
     transport = WeChatTransport(account_id=account_id)
     _state["transport"] = transport
