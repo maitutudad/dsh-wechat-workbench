@@ -41,7 +41,7 @@ const schema = Schema.object({
   allowGroups: Schema.boolean()
     .default(false)
     .volatile()
-    .description('是否响应群聊消息（需 @机器人；发送者需在白名单）'),
+    .description('群聊支持：白名单成员在微信群里 @机器人 时响应；只用 1v1 私聊则保持关闭'),
   bootstrap: Schema.boolean()
     .default(false)
     .volatile()
@@ -134,7 +134,7 @@ export function apply(ctx, config) {
   let primaryConversationId = null
 
   /** Login/connection state for the Web detail panel's status route. */
-  const loginState = { state: 'connecting', qrUrl: null, qrSvg: null, message: null }
+  const loginState = { state: 'connecting', qrUrl: null, qrSvg: null, qrAt: 0, message: null }
 
   // Authenticated same-origin status endpoint for the client companion's
   // detail panel (the connection carrier applies browser auth before fetch).
@@ -142,6 +142,7 @@ export function apply(ctx, config) {
     state: loginState.state,
     qrUrl: loginState.qrUrl,
     qrSvg: loginState.qrSvg,
+      qrAt: loginState.qrAt,
     message: loginState.message,
     allowWxids: wxids(),
     approvalMode: live(config.approvalMode) ?? 'wechat-driven',
@@ -255,6 +256,7 @@ export function apply(ctx, config) {
     loginState.state = 'login'
     loginState.qrUrl = qrUrl ?? null
     loginState.qrSvg = qrSvg ?? null
+    loginState.qrAt = Date.now()
     logger.warn(`wechat-workbench: 请用微信扫码登录 iLink：${qrUrl}`)
     // Direct write: guaranteed visible even if the host filters logger output.
     process.stderr.write(
@@ -265,6 +267,7 @@ export function apply(ctx, config) {
     loginState.state = 'ready'
     loginState.qrUrl = null
     loginState.qrSvg = null
+    loginState.qrAt = 0
     loginState.message = null
     logger.info('wechat-workbench: iLink 长连接已建立，微信工作台就绪')
   })

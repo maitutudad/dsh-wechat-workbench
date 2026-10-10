@@ -25,7 +25,7 @@ window.__ModuleLoader__.load({
     const FIELD_ORDER = ['allowWxids', 'allowGroups', 'bootstrap', 'approvalMode', 'idleAwayMinutes', 'answerTimeoutMs']
     const FIELD_LABELS = {
       allowWxids: '授权白名单（空格分隔；空 = 拒绝所有人）',
-      allowGroups: '响应群聊消息（发送者需在白名单并 @机器人）',
+      allowGroups: '群聊支持（白名单成员在群里 @机器人 时响应；只用私聊保持关闭）',
       bootstrap: '引导模式（只回复来信号 id，不执行指令）',
       approvalMode: "审批通道（'wechat-driven' | 'all'）",
       idleAwayMinutes: '键鼠空闲多少分钟判定离席',
@@ -201,7 +201,14 @@ window.__ModuleLoader__.load({
             h('div', { style: { fontSize: 12, marginTop: 6 } },
               '用微信扫码绑定（或',
               h('a', { href: status.qrUrl ?? '#', target: '_blank', rel: 'noreferrer' }, '打开链接'),
-              '）。扫过一次后令牌持久化，重启免扫码。'))
+              '）。扫过一次后令牌持久化，重启免扫码。'),
+            h('div', { style: { fontSize: 12, marginTop: 4, opacity: .7 } },
+              '二维码过期会自动换新', status.qrAt ? `（当前这版 ${Math.max(0, Math.round((Date.now() - status.qrAt) / 1000))} 秒前更新）` : ''),
+            h(Button, {
+              variant: 'ghost', size: 'sm', disabled: pending !== null,
+              title: '立即重新生成二维码（过期也会自动换新）',
+              onClick: () => { void act('reconnect') },
+            }, pending === 'reconnect' ? '刷新中…' : '刷新二维码'))
           : null,
         status?.state === 'error' && status.message
           ? h('div', { style: { fontSize: 12, marginTop: 6, opacity: .8 } }, String(status.message))
