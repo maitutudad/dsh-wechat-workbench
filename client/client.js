@@ -18,6 +18,7 @@ window.__ModuleLoader__.load({
   factory: (require) => {
     var module = { exports: {} }; var exports = module.exports
     const React = require('react')
+    const { Button, Input, Switch, SegmentedControl } = require('@deepseek-ai/dsh-client-ui-primitives')
     const { useEffect, useRef, useState } = React
     const h = React.createElement
 
@@ -33,10 +34,7 @@ window.__ModuleLoader__.load({
 
     // No chrome of our own: the plugin page already frames each detail
     // section, so the companion renders content only.
-    const box = { padding: '2px 0', margin: '2px 0' }
     const labelStyle = { display: 'block', fontSize: 12, opacity: .85, marginBottom: 6 }
-    const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', font: 'inherit', lineHeight: 'inherit' }
-    const buttonStyle = { padding: '3px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(128,128,128,.35)', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', lineHeight: 'inherit' }
 
     /** Subscribe to one settings form; re-renders on every snapshot change. */
     function useConfigForm(ctx, namespace) {
@@ -71,10 +69,6 @@ window.__ModuleLoader__.load({
         if (typeof value[k] === 'number') { const n = Number(raw); return Number.isFinite(n) ? n : raw }
         return raw
       }
-      const setBool = (k, v) => setDraft({ ...currentDraft, [k]: v })
-      const setText = (k, v) => setDraft({ ...currentDraft, [k]: v })
-      const setMode = (v) => setDraft({ ...currentDraft, approvalMode: v })
-      const effective = (k) => (hasDraft(k) ? currentDraft[k] : value[k])
       const save = async () => {
         let changed = 0
         try {
@@ -95,42 +89,39 @@ window.__ModuleLoader__.load({
           setNote(`保存失败：${String(error?.message ?? error)}`)
         }
       }
-      return h('div', { 'data-wechat-config': 'form', style: { display: 'grid', gap: 10, marginTop: 8 } },
+      return h('div', { 'data-wechat-config': 'form', style: { display: 'grid', gap: 12, marginTop: 8 } },
         headline ? h('div', { style: { fontSize: 13, fontWeight: 600 } }, headline) : null,
         ...keys.map((k) => {
           if (typeof value[k] === 'boolean') {
-            return h('label', { key: k, style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 } },
-              h('input', {
-                type: 'checkbox',
-                checked: boolValue(k),
-                onChange: (e) => setBool(k, e.target.checked),
-                style: { accentColor: 'inherit', margin: 0 },
-              }),
-              FIELD_LABELS[k] ?? k)
+            return h(Switch, {
+              key: k, checked: boolValue(k), label: FIELD_LABELS[k] ?? k,
+              onChange: (next) => setDraft({ ...currentDraft, [k]: next }),
+            })
           }
           if (k === 'approvalMode') {
-            return h('label', { key: k, style: labelStyle },
-              FIELD_LABELS[k] ?? k,
-              h('select', {
+            return h('div', { key: k },
+              h('span', { style: labelStyle }, FIELD_LABELS[k] ?? k),
+              h(SegmentedControl, {
                 value: modeValue(),
-                onChange: (e) => setMode(e.target.value),
-                style: inputStyle,
-              },
-                h('option', { value: 'wechat-driven' }, '仅微信驱动的会话'),
-                h('option', { value: 'all' }, '所有会话（离席时推微信）')))
+                options: [
+                  { value: 'wechat-driven', label: '仅微信驱动' },
+                  { value: 'all', label: '所有会话（离席时）' },
+                ],
+                onChange: (v) => setDraft({ ...currentDraft, approvalMode: v }),
+              }))
           }
           return h('label', { key: k, style: labelStyle },
             FIELD_LABELS[k] ?? k,
-            h('input', {
+            h(Input, {
               type: typeof value[k] === 'number' ? 'number' : 'text',
               value: textValue(k),
-              onChange: (e) => setText(k, e.target.value),
-              style: inputStyle,
+              onChange: (e) => setDraft({ ...currentDraft, [k]: e.target.value }),
+              style: { width: '100%' },
             }))
         }),
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h('button', { type: 'button', style: { ...buttonStyle, marginTop: 0 }, onClick: () => { void save() } }, '保存'),
-          h('button', { type: 'button', style: { ...buttonStyle, marginTop: 0 }, onClick: () => { setDraft(null); setNote('已还原') } }, '还原'),
+          h(Button, { variant: 'outline', size: 'sm', onClick: () => { void save() } }, '保存'),
+          h(Button, { variant: 'ghost', size: 'sm', onClick: () => { setDraft(null); setNote('已还原') } }, '还原'),
           note ? h('span', { style: { fontSize: 13, opacity: .8 } }, note) : null))
     }
 
@@ -166,17 +157,26 @@ window.__ModuleLoader__.load({
     /** Connection status / login QR plus reconnect controls. */
     function StatusLine(props) {
       const [status, setStatus] = useState(null)
-      const [busy, setBusy] = useState(false)
+      const [pending, setPending] = useState(null) // null | 'reconnect' | 'logout'
       const act = async (action) => {
-        setBusy(true)
+        setPending(action)
         try {
           await fetch('/api/wechat-workbench/status', {
             method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ action }),
           })
         } catch { /* the next poll reports the outcome */ }
-        setBusy(false)
       }
+      // A pending action clears once the polled state settles somewhere new.
+      useEffect(() => {
+        if (pending === null) return
+        if (status?.state === 'ready' || status?.state === 'login') setPending(null)
+      }, [status?.state, pending])
+      useEffect(() => {
+        if (pending === null) return
+        const timer = setTimeout(() => setPending(null), 20_000)
+        return () => { clearTimeout(timer) }
+      }, [pending])
       useEffect(() => {
         const poll = async () => {
           try {
@@ -195,8 +195,8 @@ window.__ModuleLoader__.load({
           `微信通道：${STATE_TEXT[status?.state] ?? status?.state ?? '…'}`),
         status?.state === 'login'
           ? h('div', { style: { marginTop: 8, textAlign: 'center' } },
-            status.qrPng
-              ? h('img', { src: `data:image/png;base64,${status.qrPng}`, alt: '登录二维码', style: { width: 220, height: 220 } })
+            status.qrSvg
+              ? h('img', { src: `data:image/svg+xml;base64,${status.qrSvg}`, alt: '登录二维码', style: { width: 220, height: 220, background: '#fff', borderRadius: 8 } })
               : null,
             h('div', { style: { fontSize: 12, marginTop: 6 } },
               '用微信扫码绑定（或',
@@ -212,10 +212,18 @@ window.__ModuleLoader__.load({
               `白名单 ${status.allowWxids?.length ?? 0} 人 · 审批：${status.approvalMode === 'all' ? '所有会话（离席时）' : '仅微信驱动会话'} · ${status.atDesk ? '当前在电脑前' : '当前离席'}`)
             : null,
           status?.state === 'ready' || status?.state === 'error'
-            ? h('button', { type: 'button', style: buttonStyle, disabled: busy, onClick: () => { void act('reconnect') } }, '重新连接')
+            ? h(Button, {
+              variant: 'outline', size: 'sm', disabled: pending !== null,
+              title: '重启传输进程；保留登录令牌，通常免扫码恢复',
+              onClick: () => { void act('reconnect') },
+            }, pending === 'reconnect' ? '重连中…' : '重新连接')
             : null,
           status?.state === 'ready'
-            ? h('button', { type: 'button', style: buttonStyle, disabled: busy, onClick: () => { void act('logout') } }, '退出并重新扫码')
+            ? h(Button, {
+              variant: 'outline', size: 'sm', disabled: pending !== null,
+              title: '清除本机登录令牌并断开；重连后面板显示新二维码，需重新扫码（换绑微信也用它）',
+              onClick: () => { if (window.confirm('清除登录令牌并断开？重连后需要重新扫码绑定。')) void act('logout') },
+            }, pending === 'logout' ? '等待重扫…' : '解绑并重新扫码')
             : null))
     }
 

@@ -51,18 +51,28 @@ def _emit(payload: dict) -> None:
     sys.stdout.flush()
 
 
-def _qr_png_b64(url: str) -> str:
-    """Render the login QR as a base64 PNG for the Web detail panel."""
+def _qr_svg_b64(url: str) -> str:
+    """Render the login QR as a base64 inline SVG (no Pillow dependency)."""
     try:
         import base64
-        import io
 
         import qrcode
 
-        img = qrcode.make(url)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return base64.b64encode(buf.getvalue()).decode()
+        qr = qrcode.QRCode(border=2)
+        qr.add_data(url)
+        qr.make(fit=True)
+        matrix = qr.get_matrix()
+        n = len(matrix)
+        parts = []
+        for y, row in enumerate(matrix):
+            for x, on in enumerate(row):
+                if on:
+                    parts.append(f"M{x} {y}h1v1h-1z")
+        svg = (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" '
+            f'shape-rendering="crispEdges"><path d="{"".join(parts)}"/></svg>'
+        )
+        return base64.b64encode(svg.encode()).decode()
     except Exception:
         return ""
 
@@ -310,7 +320,7 @@ async def main() -> None:
     if transport.needs_login:
         session = await transport.request_login()
         if session.qr_url:
-            _emit({"op": "login", "qrUrl": session.qr_url, "qrPng": _qr_png_b64(session.qr_url)})
+            _emit({"op": "login", "qrUrl": session.qr_url, "qrSvg": _qr_svg_b64(session.qr_url)})
             _render_qr(session.qr_url)
             while True:
                 result = await transport.check_login(session)
@@ -322,7 +332,7 @@ async def main() -> None:
                     session = await transport.request_login()
                     if not session.qr_url:
                         break  # a stored token appeared; skip scanning
-                    _emit({"op": "login", "qrUrl": session.qr_url, "qrPng": _qr_png_b64(session.qr_url)})
+                    _emit({"op": "login", "qrUrl": session.qr_url, "qrSvg": _qr_svg_b64(session.qr_url)})
                     _render_qr(session.qr_url)
                 elif result.status == LoginStatus.ERROR:
                     logger.warning("login poll error: %s", result.error)
