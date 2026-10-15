@@ -32,6 +32,7 @@ function runTransport(state, ops = [], timeoutMs = 8_000, startExtra = {}) {
       env: {
         ...process.env,
         PYTHONPATH: fakeSdk,
+        PYTHONDONTWRITEBYTECODE: '1', // keep __pycache__ out of the npm tarball
         FAKE_STATE: JSON.stringify(state),
         FAKE_LOG: fakeLog,
       },
