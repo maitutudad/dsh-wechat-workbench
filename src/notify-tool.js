@@ -116,10 +116,25 @@ export function registerNotifyTool(ctx, { transport, getPrimary }) {
       }
       const fileName = (args.fileName ?? '').trim() || path.basename(filePath)
       const kind = kindForFileName(fileName)
-      const queued = transport.sendMedia({ conversationId: conversation, path: filePath, kind, fileName })
-      return queued
-        ? { sent: true, conversation }
-        : { sent: false, reason: 'transport child is not running' }
+      // Await the transport child's real ack (upload + send on the iLink
+      // connection). Queueing alone proved too optimistic: a failed CDN
+      // upload used to report success while the user received nothing.
+      let outcome
+      try {
+        outcome = await transport.sendMedia({ conversationId: conversation, path: filePath, kind, fileName })
+      } catch (error) {
+        outcome = error
+      }
+      if (outcome === false) {
+        return { sent: false, conversation, reason: 'transport child is not running' }
+      }
+      if (outcome instanceof Error) {
+        // Best-effort text notice: text and media are different failure
+        // domains, so the path may still reach the user alongside the error.
+        transport.send(conversation, `⚠️ 文件发送到微信失败（${outcome.message}）。文件已保留在本地：${filePath}`)
+        return { sent: false, conversation, reason: outcome.message }
+      }
+      return { sent: true, conversation }
     },
   }))
 }

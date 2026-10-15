@@ -1,6 +1,6 @@
 {
   "name": "dsh-wechat-workbench",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "WeChat remote workbench for DeepSeek Harness: browse workspaces, continue sessions, and approve agent questions over the iLink Bot long connection",
   "type": "module",
   "main": "src/index.js",

@@ -12,22 +12,29 @@ child -> parent:
   {"op":"ready"}                        long connection established
   {"op":"message","conversationId":"...","senderId":null,"senderName":null,
    "groupId":null,"isAtBot":false,"text":"...","messageId":"..."}
+  {"op":"sendResult","id":"...","ok":true}          text send ack (failure carries "error")
+  {"op":"sendMediaResult","id":"...","ok":true}     media send ack (failure carries "error")
   {"op":"error","message":"..."}        fatal transport error
 
 parent -> child:
   {"op":"start","accountId":"dsh"}      begin login + connect
-  {"op":"send","conversationId":"...","text":"..."}   reply to that chat
+  {"op":"send","id":"...","conversationId":"...","text":"..."}   reply; ack via sendResult
+  {"op":"sendMedia","id":"...","conversationId":"...","path":"...",
+   "kind":"image|video|file|voice","fileName":"..."}            ack via sendMediaResult
   {"op":"stop"}                         graceful shutdown
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64 as _b64
 import json
 import logging
+import mimetypes
 import sys
 
 from wechat_agent_sdk import WeChatTransport
+from wechat_agent_sdk.media.cdn import upload_media as _sdk_upload_media
 
 # SDK 0.2.1's download goes to GET /c2c?encrypted_query_param=... which the CDN
 # answers with 400 even for fresh images; /c2c/download is the fallback shape.
@@ -90,10 +97,13 @@ def _render_qr(url: str) -> None:
         logger.warning("qrcode lib unavailable; open the URL and scan it: %s", url)
 
 
-async def _send(conversation_id: str, text: str) -> None:
+async def _send(conversation_id: str, text: str, ack_id: str = "") -> None:
+    """Send one text; ack the parent with ok/error so failures are visible."""
     transport = _state["transport"]
     if transport is None:
         logger.warning("send before connect ignored")
+        if ack_id:
+            _emit({"op": "sendResult", "id": ack_id, "ok": False, "error": "not connected"})
         return
     token = _context_tokens.get(conversation_id)
     try:
@@ -101,26 +111,64 @@ async def _send(conversation_id: str, text: str) -> None:
             await transport.send_text(conversation_id, text, token)
         else:
             await transport.send_text(conversation_id, text)
-    except Exception:
+        if ack_id:
+            _emit({"op": "sendResult", "id": ack_id, "ok": True})
+    except Exception as exc:
         logger.exception("send_text failed to %s", conversation_id)
+        if ack_id:
+            _emit({"op": "sendResult", "id": ack_id, "ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
 
-async def _send_media(conversation_id: str, path: str, kind: str, file_name: str) -> None:
-    """Read a local file and push it to WeChat (image/video/file/voice)."""
+async def _send_media(conversation_id: str, path: str, kind: str, file_name: str, ack_id: str = "") -> None:
+    """Read a local file and push it to WeChat (image/video/file/voice).
+
+    Every failure is reported to the parent (sendMediaResult ok=false): the
+    old behavior logged to stderr only, so a failed upload surfaced to the
+    user as a tool result claiming success while nothing arrived on WeChat.
+    """
     transport = _state["transport"]
+
+    def _fail(reason: str) -> None:
+        logger.error("send_media failed to %s (%s): %s", conversation_id, path, reason)
+        if ack_id:
+            _emit({"op": "sendMediaResult", "id": ack_id, "ok": False, "error": reason})
+
     if transport is None:
-        logger.warning("sendMedia before connect ignored")
+        _fail("not connected")
         return
     try:
         with open(path, "rb") as fh:
             data = fh.read()
+    except Exception as exc:
+        _fail(f"read failed: {type(exc).__name__}: {exc}")
+        return
+    try:
         token = _context_tokens.get(conversation_id, "")
-        if token:
-            await transport.send_media(conversation_id, data, kind, file_name, token)
-        else:
-            await transport.send_media(conversation_id, data, kind, file_name)
-    except Exception:
-        logger.exception("send_media failed to %s (%s)", conversation_id, path)
+        transport = _state["transport"]
+        http_client = await transport.client._ensure_client()
+        # SDK upload (encrypt + getuploadurl + CDN POST) is protocol-correct;
+        # only its item builder encodes aes_key wrong (see _build_media_item).
+        cdn_info = await _sdk_upload_media(
+            bot_client=transport.client,
+            http_client=http_client,
+            to_user_id=conversation_id,
+            file_data=data,
+            media_type={"image": 1, "video": 2, "file": 3, "voice": 4}.get(kind, 3),
+            file_name=file_name,
+        )
+        import hashlib as _hashlib
+        # PKCS7 padded ciphertext size (always at least one extra block byte):
+        # matches what cdn_upload sends as `filesize` without re-encrypting.
+        cdn_info["filesize"] = (len(data) // 16 + 1) * 16
+        item = _build_media_item(kind, cdn_info, file_name,
+                                 raw_size=len(data), raw_md5=_hashlib.md5(data).hexdigest())
+        await transport.client.send_media_message(conversation_id, item, token or "")
+        if ack_id:
+            _emit({"op": "sendMediaResult", "id": ack_id, "ok": True})
+    except Exception as exc:
+        # The SDK logs and swallows some server-side rejections; the ack makes
+        # the remaining real failures (upload, crypto, HTTP) caller-visible.
+        _fail(f"{type(exc).__name__}: {exc}")
 
 
 def _media_kind(media_type: str) -> str:
@@ -128,10 +176,56 @@ def _media_kind(media_type: str) -> str:
 
 
 def _guess_mime(file_name: str) -> str:
-    import mimetypes
-
     guessed = mimetypes.guess_type(file_name)[0]
     return guessed or "application/octet-stream"
+
+
+def _build_media_item(media_type: str, cdn_info: dict, file_name: str = "", raw_size: int = 0, raw_md5: str = "") -> dict:
+    """Build a sendmessage item the receiving WeChat client can actually use.
+
+    Cross-checked against two independent working implementations
+    (photon-hq/wechat-ilink-client, reverse-engineered from Tencent's
+    openclaw-weixin; and lith0924/wechat-ilink-sdk-java):
+      - media.aes_key is base64(hex 32 chars) for EVERY type
+      - file_item carries file_name + len (plaintext size, string) + md5
+      - image_item carries mid_size (ciphertext size) and the top-level hex
+        aeskey real inbound messages carry
+      - video_item carries video_size (ciphertext size)
+    SDK 0.2.1's own builder encodes aes_key as base64(raw 16 bytes) for all
+    types and adds none of the size fields: the server accepts the message
+    (HTTP 200 + message_id), the bubble arrives, but the client cannot use
+    the file — WeChat renders that as 已过期/无法下载.
+    """
+    raw_key = _b64.b64decode(cdn_info["aes_key"])  # 16 bytes
+    media_ref = {
+        "encrypt_query_param": cdn_info["encrypt_query_param"],
+        "aes_key": _b64.b64encode(raw_key.hex().encode()).decode(),
+        "encrypt_type": cdn_info.get("encrypt_type", 1),
+    }
+    if media_type == "image":
+        return {
+            "type": 2,
+            "image_item": {
+                "media": media_ref,
+                "aeskey": raw_key.hex(),
+                "mid_size": cdn_info.get("filesize"),
+            },
+        }
+    if media_type == "video":
+        return {"type": 5, "video_item": {"media": media_ref, "video_size": cdn_info.get("filesize")}}
+    if media_type == "voice":
+        return {"type": 3, "voice_item": {"media": media_ref}}
+    item = {
+        "type": 4,
+        "file_item": {
+            "media": media_ref,
+            "file_name": file_name,
+            "len": str(raw_size),
+        },
+    }
+    if raw_md5:
+        item["file_item"]["md5"] = raw_md5
+    return item
 
 
 async def _cdn_variant_download(media) -> bytes:
@@ -223,14 +317,15 @@ async def _reader_loop(stop: asyncio.Event) -> None:
             continue
         op = msg.get("op")
         if op == "send":
-            asyncio.create_task(_send(msg["conversationId"], msg["text"]))
+            asyncio.create_task(_send(msg["conversationId"], msg["text"], msg.get("id", "")))
         elif op == "sendMedia":
             asyncio.create_task(
                 _send_media(
                     msg["conversationId"],
                     msg["path"],
-                    msg.get("kind", "file"),
+                    msg.get("kind") or msg.get("mediaType") or "file",
                     msg.get("fileName", ""),
+                    msg.get("id", ""),
                 )
             )
         elif op == "logout":

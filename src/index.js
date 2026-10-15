@@ -84,8 +84,34 @@ export function readLiveField(field) {
 
 export const inject = ['sessionController', 'workspaceController', 'userQuestions', 'sessionQuery', 'tools', 'connection']
 
-/** Sessions currently driven from WeChat (for the answerer's claim rule). */
-const wechatDrivenSessions = new Set()
+/**
+ * Sessions currently driven from WeChat (for the answerer's claim rule).
+ * Durable-backed: a plugin reload (hot config edit) must not silently hand
+ * WeChat-driven sessions' questions back to the GUI, so the set hydrates
+ * from disk at startup and persists on every mark.
+ */
+class DrivenSessions {
+  /** @param {string} file */
+  constructor(file) {
+    this.file = file
+    /** @type {Set<string>} */
+    this.sessions = new Set()
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+      for (const id of Array.isArray(parsed) ? parsed : []) this.sessions.add(id)
+    } catch { /* missing or corrupt file: start empty */ }
+  }
+
+  has(id) { return this.sessions.has(id) }
+
+  add(id) {
+    if (this.sessions.has(id)) return
+    this.sessions.add(id)
+    try {
+      fs.writeFileSync(this.file, JSON.stringify([...this.sessions], null, 2))
+    } catch { /* best-effort persistence */ }
+  }
+}
 
 export function apply(ctx, config) {
   const logger = ctx.logger
@@ -116,6 +142,7 @@ export function apply(ctx, config) {
   const storeDir = path.join(home, 'wechat-workbench')
   fs.mkdirSync(storeDir, { recursive: true })
   const pointers = new PointerStore(path.join(storeDir, 'pointers.json'))
+  const wechatDrivenSessions = new DrivenSessions(path.join(storeDir, 'driven-sessions.json'))
 
   const transport = new WeChatTransportChild(ctx, {
     pythonBin: resolvePythonBin({
@@ -281,7 +308,9 @@ export function apply(ctx, config) {
     transport.start()
     return () => {
       transport.kill()
-      wechatDrivenSessions.clear()
+      // wechatDrivenSessions intentionally survives: it is durable-backed so
+      // a hot plugin reload keeps WeChat-driven sessions' questions claimed
+      // here instead of silently falling back to the GUI.
     }
   })
 }

@@ -36,10 +36,13 @@ Design promises:
   appears in the GUI and vice versa — same durable timeline, same tools,
   same permissions, same model routing.
 - **GUI-initiated turns stay silent.** Only turns started from WeChat push
-  progress lines (throttled) and the final assistant reply.
+  progress lines (throttled) and the final assistant reply. Progress lines
+  carry the call's digest (`🔧 bash · run tests`), not just the tool name.
 - **WeChat is an approval channel.** Every human decision the agent makes
   (`ask_user_question`, plan reviews, permission prompts) flows through
-  DSH's `user-questions/request` waterfall. With `approvalMode: 'all'` and the
+  DSH's `user-questions/request` waterfall, claimed **before** the web-GUI
+  forwarder (prepend) — a WeChat-driven session's questions reach WeChat even
+  while the GUI has the session open. With `approvalMode: 'all'` and the
   at-desk detector reporting *away*, questions from **any** session are pushed
   to WeChat; reply `1` / an option label / `y` / `n` (or custom text) to answer.
   Unanswered questions fall back to the GUI after a timeout.
@@ -47,7 +50,9 @@ Design promises:
   to the notification conversation ("ping me on WeChat when the build fails").
 - **`wechat_send_file` tool.** Any session's agent can hand a local file to
   the user on WeChat — png/jpg/gif/webp render as images, mp4 as video,
-  everything else as a file message.
+  everything else as a file message. The tool awaits the transport child's
+  real ack; a failed upload reports the reason and pushes a WeChat text
+  fallback carrying the local path instead of silently claiming success.
 - **Media inbound.** WeChat images are downloaded and inlined into the session
   prompt (the agent sees them with vision); files land on disk and the prompt
   references their path for the agent's fs tools.

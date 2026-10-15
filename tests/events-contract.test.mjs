@@ -34,11 +34,11 @@ const assistantMessage = (body) => ({
   },
 })
 
-const toolCall = (name) => ({
+const toolCall = (name, args) => ({
   type: 'tool/call',
   seq: 8,
   time: 1_700_000_000_001,
-  data: { turn: 1, step: 0, callId: 'c1', name, arguments: '{}' },
+  data: { turn: 1, step: 0, callId: 'c1', name, arguments: args ?? '{}' },
 })
 
 test('TDD-red: assistant text lives in data.message.content blocks', () => {
@@ -48,6 +48,14 @@ test('TDD-red: assistant text lives in data.message.content blocks', () => {
 test('TDD-red: tool/call summary uses data.name', () => {
   assert.equal(summarizeEvent(toolCall('bash')), '🔧 bash')
   assert.equal(summarizeEvent(toolCall('str-replace-editor')), '🔧 str-replace-editor')
+})
+
+test('tool/call summary includes the durable arguments payload (raw JSON string)', () => {
+  const call = toolCall('bash', JSON.stringify({ description: '跑测试', command: 'pnpm test' }))
+  assert.equal(summarizeEvent(call), '🔧 bash · 跑测试')
+  // wechat_send_file progress shows which file is on its way.
+  const file = toolCall('wechat_send_file', JSON.stringify({ path: '/docs/策略交易逻辑详解.md' }))
+  assert.equal(summarizeEvent(file), '🔧 wechat_send_file · /docs/策略交易逻辑详解.md')
 })
 
 test('non-text events do not summarize', () => {

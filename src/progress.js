@@ -23,13 +23,110 @@ export function summarizeEvent(event) {
   if (!event || typeof event.type !== 'string') return null
   const data = (event.data ?? {})
   if (event.type.startsWith('tool/')) {
-    const name = data.toolName ?? data.name ?? data.title ?? data.tool ?? null
-    if (event.type === 'tool/begin' || event.type === 'tool/start' || event.type === 'tool/call') {
-      return name ? `🔧 ${name}` : '🔧 工具调用'
+    if (event.type !== 'tool/begin' && event.type !== 'tool/start' && event.type !== 'tool/call') {
+      return null
     }
-    return null
+    const name = data.toolName ?? data.name ?? data.title ?? data.tool ?? null
+    // The call's arguments ride along as a raw JSON string (source-verified
+    // session/types.ts: 'tool/call' data.arguments is a string). A compact
+    // digest of WHAT the call does — not just its name — is what makes a
+    // long task's progress lines readable on a phone.
+    const detail = toolCallDetail(name, data.arguments)
+    const body = name ? (detail ? `${name} · ${detail}` : name) : (detail || '工具调用')
+    return `🔧 ${body}`
   }
   return null
+}
+
+const DETAIL_MAX_CHARS = 90
+
+/** Per-tool highlights: the one field that says what this call does. */
+const TOOL_DETAIL_FIELDS = {
+  bash: ['description', 'command'],
+  read: ['file_path'],
+  write: ['file_path'],
+  edit: ['file_path', 'old_string'],
+  glob: ['pattern'],
+  grep: ['pattern'],
+  web_fetch: ['url'],
+  web_search: ['queries'],
+  wechat_send_file: ['path'],
+  wechat_notify: ['message'],
+  subagent: ['description'],
+  subagent_fork: ['description'],
+  workflow: ['description'],
+  todo_write: ['todos'],
+  schedule_create: ['title'],
+  job_output: ['job_id'],
+}
+
+/** Fallback scan order when the tool is unknown or fields are missing. */
+const GENERIC_DETAIL_FIELDS = ['description', 'file_path', 'path', 'pattern', 'command', 'url', 'message', 'title', 'name', 'text']
+
+/**
+ * One compact line describing a tool call's arguments.
+ * @param {string | null} name - tool name, may be unknown.
+ * @param {string | object | undefined} raw - arguments as raw JSON string or object.
+ * @returns {string} '' when nothing useful is extractable.
+ */
+export function toolCallDetail(name, raw) {
+  if (raw === undefined || raw === null) return ''
+  /** @type {any} */
+  let args = raw
+  if (typeof raw === 'string') {
+    const text = raw.trim()
+    if (!text) return ''
+    try {
+      args = JSON.parse(text)
+    } catch {
+      return oneLine(text, DETAIL_MAX_CHARS) // not JSON: show it raw
+    }
+  }
+  if (typeof args !== 'object') return oneLine(String(args), DETAIL_MAX_CHARS)
+
+  if (name === 'ask_user_question') {
+    const question = Array.isArray(args.questions) ? args.questions[0] : null
+    if (question) {
+      const head = question.header ? `【${question.header}】` : ''
+      return oneLine(`${head}${question.question ?? ''}`)
+    }
+    return ''
+  }
+
+  const fields = [...(TOOL_DETAIL_FIELDS[name ?? ''] ?? []), ...GENERIC_DETAIL_FIELDS]
+  for (const field of fields) {
+    const value = args[field]
+    const line = detailValue(value)
+    if (line) return oneLine(line, DETAIL_MAX_CHARS)
+  }
+  return ''
+}
+
+/** Render one argument value into a short string, best effort. */
+function detailValue(value) {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    // queries: ['a','b'] -> "a、b"; todos: [{content}] -> contents
+    const parts = value
+      .map((item) => (typeof item === 'string' ? item : detailValue(item?.content ?? item?.label ?? item?.path ?? item)))
+      .filter(Boolean)
+    return parts.join('、')
+  }
+  if (typeof value === 'object') {
+    for (const key of ['label', 'description', 'title', 'name', 'content', 'path']) {
+      if (typeof value[key] === 'string' && value[key]) return value[key]
+    }
+    return ''
+  }
+  return ''
+}
+
+/** Collapse to one line and cap the length. */
+function oneLine(text, max = DETAIL_MAX_CHARS) {
+  const collapsed = String(text).replace(/\s+/g, ' ').trim()
+  return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed
 }
 
 /** Extract assistant text from an assistant message event, best effort. */

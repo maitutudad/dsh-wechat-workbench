@@ -68,7 +68,7 @@ test('wechat_send_file tool pushes a local file through the transport', async ()
   const ctx = { tools: { register: (t) => registered.push(t) } }
   const registered = []
   registerNotifyTool(ctx, {
-    transport: { send: () => {}, sendMedia: (op) => sent.push(op) },
+    transport: { send: () => {}, sendMedia: async (op) => { sent.push(op); return true } },
     getPrimary: () => 'wxid_boss',
   })
   const tool = registered.find((t) => t.name === 'wechat_send_file')
@@ -79,6 +79,41 @@ test('wechat_send_file tool pushes a local file through the transport', async ()
   assert.equal(sent[0].path, filePath)
   assert.equal(sent[0].kind, 'image')
   assert.equal(sent[0].fileName, 'out.png')
+})
+
+test('wechat_send_file surfaces a transport failure instead of claiming success', async () => {
+  const filePath = writeTempFile('broken.png', Buffer.from(PNG_BASE64, 'base64'))
+  const notices = []
+  const ctx = { tools: { register: (t) => registered.push(t) } }
+  const registered = []
+  registerNotifyTool(ctx, {
+    transport: {
+      send: (conversationId, text) => notices.push({ conversationId, text }),
+      sendMedia: async () => { throw new Error('CDN upload failed: 400 Bad Request') },
+    },
+    getPrimary: () => 'wxid_boss',
+  })
+  const tool = registered.find((t) => t.name === 'wechat_send_file')
+  const result = await tool.execute({ path: filePath })
+  assert.equal(result.sent, false, 'failure must not report sent:true')
+  assert.match(result.reason, /CDN upload failed/)
+  assert.equal(notices.length, 1, 'fallback WeChat text notice sent')
+  assert.match(notices[0].text, /文件发送到微信失败/)
+  assert.match(notices[0].text, /broken\.png/, 'notice carries the local path')
+})
+
+test('wechat_send_file reports sent:false when the transport child is down', async () => {
+  const filePath = writeTempFile('offline.png', Buffer.from(PNG_BASE64, 'base64'))
+  const ctx = { tools: { register: (t) => registered.push(t) } }
+  const registered = []
+  registerNotifyTool(ctx, {
+    transport: { send: () => {}, sendMedia: async () => false },
+    getPrimary: () => 'wxid_boss',
+  })
+  const tool = registered.find((t) => t.name === 'wechat_send_file')
+  const result = await tool.execute({ path: filePath })
+  assert.equal(result.sent, false)
+  assert.match(result.reason, /not running/)
 })
 
 test('failed media download surfaces an explicit note in the prompt text', async () => {

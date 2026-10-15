@@ -5,9 +5,13 @@
  * wechat-agent-sdk). Speaks one JSON object per line over stdio; the child's
  * stderr is surfaced through the plugin logger. Crashes are restarted with
  * backoff for the plugin's lifetime.
+ *
+ * Send ops carry a caller-supplied `id` and the child answers with
+ * `{op:'sendResult'|'sendMediaResult', id, ok, error}` — see writeWithAck.
  */
 
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -32,6 +36,8 @@ export class WeChatTransportChild {
     this.child = null
     /** @type {Map<string, (line: any) => void>} op -> listener */
     this.listeners = new Map()
+    /** @type {Map<string, {resolve: (v: any) => void, reject: (e: Error) => void, timer: NodeJS.Timeout}>} ack id -> waiter */
+    this.pendingAcks = new Map()
     this.buffer = ''
     this.stopping = false
     this.restartDelayMs = 2_000
@@ -47,6 +53,18 @@ export class WeChatTransportChild {
     this.stopping = false
     this.spawnOnce()
     this.ctx.effect(() => () => { this.kill() })
+  }
+
+  /**
+   * Reject every in-flight ack waiter (child crash / restart): a queued op
+   * whose executor died must not keep its caller blocked until timeout.
+   */
+  failPendingAcks(reason) {
+    for (const [id, waiter] of this.pendingAcks) {
+      clearTimeout(waiter.timer)
+      this.pendingAcks.delete(id)
+      waiter.reject(new Error(reason))
+    }
   }
 
   spawnOnce() {
@@ -66,6 +84,7 @@ export class WeChatTransportChild {
       return
     }
     this.child = child
+    this.failPendingAcks('wechat transport restarted before the send completed')
     this.logger.info(`wechat transport spawned (pid ${child.pid})`)
 
     child.on('error', (error) => {
@@ -105,6 +124,16 @@ export class WeChatTransportChild {
       if (line) {
         try {
           const message = JSON.parse(line)
+          if ((message.op === 'sendResult' || message.op === 'sendMediaResult') && message.id) {
+            const waiter = this.pendingAcks.get(message.id)
+            if (waiter) {
+              clearTimeout(waiter.timer)
+              this.pendingAcks.delete(message.id)
+              if (message.ok) waiter.resolve(true)
+              else waiter.reject(new Error(message.error || 'transport child reported failure'))
+            }
+            continue
+          }
           const handler = this.listeners.get(message.op)
           if (handler) handler(message)
           else this.logger.debug(`unhandled transport op: ${message.op}`)
@@ -126,14 +155,46 @@ export class WeChatTransportChild {
     return false
   }
 
-  /** Send a text reply into one WeChat conversation. */
-  send(conversationId, text) {
-    this.write({ op: 'send', conversationId, text })
+  /**
+   * Write an op and wait for the child's matching result ack
+   * (`{op: ackOp, id, ok, error}`). Resolves true on ok; rejects with the
+   * child's error (or a timeout/restart reason). This is what turns the
+   * child's silent stderr-only failures into caller-visible outcomes.
+   * @param {any} payload
+   * @param {{ackOp?: string, timeoutMs?: number}} [options]
+   */
+  writeWithAck(payload, { ackOp = 'sendResult', timeoutMs = 150_000 } = {}) {
+    const id = randomUUID()
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingAcks.delete(id)
+        reject(new Error(`no ${ackOp} ack from transport child within ${timeoutMs}ms`))
+      }, timeoutMs)
+      timer.unref?.()
+      this.pendingAcks.set(id, { resolve, reject, timer })
+      if (!this.write({ ...payload, id })) {
+        clearTimeout(timer)
+        this.pendingAcks.delete(id)
+        reject(new Error('transport child is not running'))
+      }
+    })
   }
 
-  /** Push a local file to one WeChat conversation as image/video/file/voice. */
+  /** Send a text reply into one WeChat conversation. Failures are logged. */
+  send(conversationId, text) {
+    this.writeWithAck({ op: 'send', conversationId, text })
+      .catch((error) => this.logger.error(`wechat-workbench: 文本发送失败 to=${conversationId}: ${error}`))
+  }
+
+  /**
+   * Push a local file to one WeChat conversation as image/video/file/voice.
+   * @returns {Promise<boolean>} true when the child acked the send; false
+   *           when the child is not running; rejects when the send failed.
+   */
   sendMedia(op) {
-    return this.write({ op: 'sendMedia', ...op })
+    const child = this.child
+    if (!(child?.stdin && !child.killed)) return Promise.resolve(false)
+    return this.writeWithAck({ op: 'sendMedia', ...op }, { ackOp: 'sendMediaResult' })
   }
 
   /** Kill and immediately restart the child (manual reconnect; resets backoff). */
@@ -146,6 +207,7 @@ export class WeChatTransportChild {
 
   kill() {
     this.stopping = true
+    this.failPendingAcks('wechat transport stopped before the send completed')
     const child = this.child
     this.child = null
     if (child && !child.killed) {

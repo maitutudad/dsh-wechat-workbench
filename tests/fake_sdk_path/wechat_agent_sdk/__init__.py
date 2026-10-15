@@ -81,6 +81,14 @@ class FakeStorage:
 class FakeClient:
     def __init__(self):
         self.token = ""
+        self._fake_http = object()
+
+    async def _ensure_client(self):
+        return self._fake_http
+
+    async def send_media_message(self, to_user_id, item, context_token=""):
+        _log({"event": "send_media_message", "conversationId": to_user_id,
+              "item": item, "token": context_token})
 
 
 class WeChatTransport:
@@ -96,6 +104,10 @@ class WeChatTransport:
     @property
     def needs_login(self):
         return not self._client.token
+
+    @property
+    def client(self):
+        return self._client
 
     async def request_login(self):
         stored = await self._storage.load_token(self._account_id)
@@ -156,11 +168,6 @@ class WeChatTransport:
               "fileName": media.file_name})
         encoded = _state().get("mediaBytes")
         return b"" if not encoded else base64.b64decode(encoded)
-
-    async def send_media(self, chat_id, file_data, media_type, file_name="", context_token=""):
-        _log({"event": "send_media", "conversationId": chat_id,
-              "mediaType": media_type, "fileName": file_name,
-              "bytes": len(file_data), "token": context_token})
 
 
 WeChatBot = None

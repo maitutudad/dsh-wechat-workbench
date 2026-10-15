@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.1.1 — 2026-10-14
+
+Three fixes confirmed against live session logs (`~/.dsh/sessions`):
+
+- **ask_user_question now reaches WeChat even while the Web GUI is open.**
+  The host's api-remotes forwarder registers its `user-questions/request`
+  listener before any plugin, so a browser with the session open claimed
+  every question first; WeChat only saw the `🔧 ask_user_question` progress
+  line (live case: question at 15:45 answered in the GUI at 22:45). The
+  answerer now registers with `{ prepend: true }`: WeChat-driven sessions
+  (and `'all'`-mode away approvals) are claimed before the forwarder, and
+  `next()` keeps the GUI fallback on timeout exactly as before. The
+  WeChat-driven session set is durable (`driven-sessions.json`), so a hot
+  plugin reload no longer silently hands questions back to the GUI.
+- **`wechat_send_file` reports real delivery.** The old flow returned
+  success once the op was queued to the child's stdin; a failed CDN
+  upload/download logged to stderr only and the user received nothing (live
+  case: tool said "File delivered", WeChat never got the .md). Sends now
+  carry an `id` and the child answers `sendResult`/`sendMediaResult`
+  (ok/error); the tool awaits the ack, reports failures with the reason,
+  and pushes a WeChat text fallback carrying the local path. Text send
+  failures are logged loudly too.
+- **Media sends are actually delivered now.** Root cause of the silent drop:
+  SDK 0.2.1's `_build_media_item` emits `aes_key = base64(raw 16 bytes)` for
+  every type and omits all size metadata. Working reference implementations
+  (photon-hq/wechat-ilink-client, reverse-engineered from Tencent's
+  openclaw-weixin; lith0924/wechat-ilink-sdk-java) build the item as:
+  `aes_key = base64(hex 32 chars)` for EVERY type, file_item + `len`
+  (plaintext size, string) + `md5`, image_item + `mid_size` (ciphertext
+  size) + top-level hex `aeskey`, video_item + `video_size` — and always
+  send with a fresh context_token. Without these the server accepts the
+  sendmessage (HTTP 200 + message_id) and either drops the bubble or shows
+  已过期/无法下载 on tap. The plugin now builds the item itself and prefers
+  the newest cached context_token. A/B-verified live: only the
+  hex32-encoded file arrives.
+- **Progress lines carry tool-call content.** `tool/call` events include the
+  raw `arguments` JSON string; summaries now digest it per tool (bash's
+  description/command, file paths, search queries, an ask_user_question's
+  first question, …), single-line, capped at ~90 chars — a long task's
+  progress reads like `🔧 bash · 跑测试` instead of `🔧 bash`.
+
 ## 0.1.0 — 2026-10-08
 
 First release. Developed as `dsh-wechat-remote`, renamed before publishing:

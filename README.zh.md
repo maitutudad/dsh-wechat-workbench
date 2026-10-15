@@ -20,7 +20,7 @@
 | `/atdesk on\|off\|auto` | 在席检测覆盖 / 状态 |
 | 直接发文字 | 向当前会话发送 follow-up（GUI 同一时间线实时可见） |
 
-> **媒体**：微信发的图片会下载后内联进会话（Agent 直接"看图"）；文件落盘到 `~/.dsh-wechat-workbench/media/` 并以路径告知 Agent。Agent 可用 `wechat_send_file` 工具把本地文件（图片/视频/文档）回发到你的微信，`wechat_notify` 可随时主动推送通知。
+> **媒体**：微信发的图片会下载后内联进会话（Agent 直接"看图"）；文件落盘到 `~/.dsh-wechat-workbench/media/` 并以路径告知 Agent。Agent 可用 `wechat_send_file` 工具把本地文件（图片/视频/文档）回发到你的微信（等待传输子进程的真实回执，失败会附带原因与本地路径），`wechat_notify` 可随时主动推送通知。长任务的进展推送带工具调用要点（如 `🔧 bash · 跑测试`），Agent 提问（ask_user_question）即使网页开着也会优先推到微信应答。
 
 ## 安装
 

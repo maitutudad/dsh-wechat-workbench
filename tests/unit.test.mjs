@@ -81,6 +81,35 @@ test('summarizeEvent: tool begin with several name fields', () => {
   assert.equal(summarizeEvent(null), null)
 })
 
+test('summarizeEvent: tool call lines carry a compact argument digest', () => {
+  // bash prefers the UI description, falls back to the command.
+  assert.equal(
+    summarizeEvent({ type: 'tool/call', data: { name: 'bash', arguments: JSON.stringify({ description: '列出目录内容', command: 'ls -la' }) } }),
+    '🔧 bash · 列出目录内容',
+  )
+  assert.equal(
+    summarizeEvent({ type: 'tool/call', data: { name: 'bash', arguments: JSON.stringify({ command: 'pnpm test\nsecond line' }) } }),
+    '🔧 bash · pnpm test second line',
+  )
+  // File tools show the path; ask_user_question shows its first question.
+  assert.match(
+    summarizeEvent({ type: 'tool/call', data: { name: 'write', arguments: JSON.stringify({ file_path: '/tmp/a.js', content: 'x'.repeat(500) }) } }),
+    /^🔧 write · \/tmp\/a\.js$/,
+  )
+  assert.equal(
+    summarizeEvent({ type: 'tool/call', data: { name: 'ask_user_question', arguments: JSON.stringify({ questions: [{ id: 'q', header: '数据预算', question: '选哪种方案？' }] }) } }),
+    '🔧 ask_user_question · 【数据预算】选哪种方案？',
+  )
+  // Unknown tool, generic fields; long values are capped.
+  const long = 'x'.repeat(200)
+  const summary = summarizeEvent({ type: 'tool/call', data: { name: 'mystery', arguments: JSON.stringify({ description: long }) } })
+  assert.ok(summary.startsWith('🔧 mystery · '), 'unknown tool still digests')
+  assert.ok(summary.length <= '🔧 mystery · '.length + 91, 'digest capped')
+  // Malformed arguments never break the summary.
+  assert.equal(summarizeEvent({ type: 'tool/call', data: { name: 'bash', arguments: 'not-json' } }), '🔧 bash · not-json')
+  assert.equal(summarizeEvent({ type: 'tool/call', data: { name: 'bash' } }), '🔧 bash')
+})
+
 test('assistantText: string and content-block shapes (assistant events only)', () => {
   assert.equal(assistantText({ type: 'assistant/message', data: { text: 'hi' } }), 'hi')
   assert.equal(assistantText({ type: 'assistant/message', data: { content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] } }), 'a\nb')

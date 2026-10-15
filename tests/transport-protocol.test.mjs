@@ -65,18 +65,24 @@ function runTransport(state, ops = [], timeoutMs = 8_000, startExtra = {}) {
       resolve({ lines, events: readEvents(), stderrText })
     }
     const done = setTimeout(() => {
+      clearInterval(poll)
       child.kill('SIGKILL')
       finish()
     }, timeoutMs)
     // Finish early once we have enough signal: ready, any expected reply,
-    // and every scripted inbound message forwarded.
+    // every scripted inbound message forwarded, and acks for ops that carry
+    // an id (send/sendMedia now answer sendResult/sendMediaResult).
     const expectedMessages = Array.isArray(state.messages) ? state.messages.length : 0
     const poll = setInterval(() => {
       const hasReady = lines.some((l) => l.op === 'ready')
       const wantedSend = ops.some((o) => o.op === 'send')
       const gotSend = readEvents().some((e) => e.event === 'send_text')
       const gotMessages = lines.filter((l) => l.op === 'message').length >= expectedMessages
-      if (hasReady && gotMessages && (!wantedSend || gotSend)) {
+      const wantedAcks = ops.filter((o) => o.id).length
+      const acksArrived = (op) => lines.some((l) => l.id === op.id
+        && (op.op === 'send' ? l.op === 'sendResult' : l.op === 'sendMediaResult'))
+      const gotAcks = ops.filter((o) => o.id).every(acksArrived)
+      if (hasReady && gotMessages && (!wantedSend || gotSend) && (!wantedAcks || gotAcks)) {
         clearTimeout(done)
         clearInterval(poll)
         child.kill('SIGKILL')
@@ -149,18 +155,73 @@ test('inbound image is downloaded to the media dir and reported on the message o
   assert.ok(events.some((e) => e.event === 'download_media'))
 })
 
-test('sendMedia op reads the file and calls send_media with type and name', async () => {
+test('sendMedia op uploads and builds a file item with len/md5 and the hex32 aes_key; acks by id', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-wx-media-'))
   const filePath = path.join(dir, 'report.pdf')
   fs.writeFileSync(filePath, '%PDF-fake')
-  const { events } = await runTransport({ needsLogin: false }, [
-    { op: 'sendMedia', conversationId: 'wxid_test', path: filePath, mediaType: 'file', fileName: 'report.pdf' },
+  const { events, lines } = await runTransport({ needsLogin: false }, [
+    { op: 'sendMedia', id: 'ack-1', conversationId: 'wxid_test', path: filePath, kind: 'file', fileName: 'report.pdf' },
   ])
-  const sent = events.find((e) => e.event === 'send_media')
-  assert.ok(sent, 'send_media invoked')
+  const uploaded = events.find((e) => e.event === 'upload_media')
+  assert.ok(uploaded, 'upload_media invoked')
+  assert.equal(uploaded.mediaType, 3, 'file upload uses integer media type 3')
+  assert.equal(uploaded.fileName, 'report.pdf')
+  assert.equal(uploaded.bytes, 9)
+  const sent = events.find((e) => e.event === 'send_media_message')
+  assert.ok(sent, 'send_media_message invoked')
   assert.equal(sent.conversationId, 'wxid_test')
-  assert.equal(sent.mediaType, 'file')
-  assert.equal(sent.fileName, 'report.pdf')
-  assert.equal(sent.bytes, 9)
+  assert.equal(sent.item.type, 4)
+  assert.equal(sent.item.file_item.file_name, 'report.pdf')
+  assert.equal(sent.item.file_item.len, '9', 'len carries the plaintext size as a string')
+  assert.match(sent.item.file_item.md5, /^[0-9a-f]{32}$/, 'md5 of the raw bytes')
+  // Protocol (per working reference implementations): aes_key = base64(hex 32)
+  // for EVERY type — base64(raw 16) is what SDK 0.2.1 emits and files then
+  // arrive but never download.
+  const rawKey = Buffer.from([...Array(16).keys()])
+  assert.equal(sent.item.file_item.media.aes_key, Buffer.from(rawKey.toString('hex')).toString('base64'),
+    'file aes_key is base64(hex32) — the encoding the receiving client can decode')
+  assert.notEqual(sent.item.file_item.media.aes_key, rawKey.toString('base64'))
   assert.equal(sent.token, '', 'no inbound context yet, empty token is fine')
+  const ack = lines.find((l) => l.op === 'sendMediaResult')
+  assert.ok(ack, 'sendMediaResult ack emitted')
+  assert.equal(ack.id, 'ack-1', 'ack echoes the caller id')
+  assert.equal(ack.ok, true)
+})
+
+test('sendMedia image kind uses hex32 aes_key plus aeskey/mid_size like real inbound items', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-wx-media-'))
+  const filePath = path.join(dir, 'pic.png')
+  fs.writeFileSync(filePath, 'png-bytes')
+  const { events } = await runTransport({ needsLogin: false }, [
+    { op: 'sendMedia', id: 'ack-img', conversationId: 'wxid_test', path: filePath, kind: 'image', fileName: 'pic.png' },
+  ])
+  const uploaded = events.find((e) => e.event === 'upload_media')
+  assert.equal(uploaded.mediaType, 1, 'image upload uses integer media type 1')
+  const sent = events.find((e) => e.event === 'send_media_message')
+  assert.equal(sent.item.type, 2)
+  const rawKey = Buffer.from([...Array(16).keys()])
+  assert.equal(sent.item.image_item.media.aes_key, Buffer.from(rawKey.toString('hex')).toString('base64'),
+    'image aes_key is base64(hex32) — matching the reference implementations, not base64(raw16)')
+  assert.equal(sent.item.image_item.aeskey, rawKey.toString('hex'),
+    'image_item carries the top-level hex aeskey like real inbound messages')
+  assert.equal(typeof sent.item.image_item.mid_size, 'number', 'mid_size (ciphertext size) present')
+})
+
+test('sendMedia failure acks ok=false with the error (no more silent stderr-only failures)', async () => {
+  const { lines } = await runTransport({ needsLogin: false }, [
+    { op: 'sendMedia', id: 'ack-2', conversationId: 'wxid_test', path: '/nonexistent/gone.pdf', kind: 'file', fileName: 'gone.pdf' },
+  ])
+  const ack = lines.find((l) => l.op === 'sendMediaResult' && l.id === 'ack-2')
+  assert.ok(ack, 'failure ack emitted')
+  assert.equal(ack.ok, false)
+  assert.ok(typeof ack.error === 'string' && ack.error.length > 0, 'error text carried')
+})
+
+test('send op with an id acks sendResult', async () => {
+  const { lines } = await runTransport({ needsLogin: false }, [
+    { op: 'send', id: 'ack-3', conversationId: 'wxid_test', text: 'hi' },
+  ])
+  const ack = lines.find((l) => l.op === 'sendResult' && l.id === 'ack-3')
+  assert.ok(ack, 'sendResult ack emitted')
+  assert.equal(ack.ok, true)
 })

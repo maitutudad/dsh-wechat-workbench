@@ -86,6 +86,12 @@ export class WeChatAnswerer {
   }
 
   register() {
+    // Claim BEFORE the host's api-remotes forwarder (registered during host
+    // assembly, earlier than any plugin): a connected Web GUI otherwise wins
+    // every question for sessions it has open, and WeChat never sees it —
+    // only the follower's `🔧 ask_user_question` progress line arrives.
+    // prepend puts this listener first in the waterfall chain; next() keeps
+    // the GUI (or the NO_PROVIDER fallback) exactly as before.
     this.ctx.on('user-questions/request', async (request, next) => {
       const agentId = request.agent?.id
       const bound = agentId ? this.conversationFor(agentId) : null
@@ -126,7 +132,7 @@ export class WeChatAnswerer {
       })
       this.transport.send(conversationId, '✅ 已提交你的回答。')
       return { answers }
-    })
+    }, { prepend: true })
   }
 
   /** Resolve a pending question with the incoming message text. */
